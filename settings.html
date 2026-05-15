@@ -1,143 +1,179 @@
-<div id="aipet-settings-root" class="aipet-settings-root">
+<!-- AI桌宠系统 · 设置面板 -->
+<div id="ai-pet-settings" class="ai-pet-settings-panel">
 
-  <!-- 标题栏 -->
-  <div class="aipet-settings-header">
-    <span class="aipet-settings-logo">🐾</span>
-    <div>
-      <div class="aipet-settings-title">AI桌宠系统</div>
-      <div class="aipet-settings-version">v1.0.0 · Phase 1</div>
-    </div>
+  <div class="ai-pet-settings-header">
+    <span class="ai-pet-settings-icon">🐾</span>
+    <span class="ai-pet-settings-title">AI桌宠系统</span>
+    <span class="ai-pet-settings-version">v1.0.0</span>
   </div>
 
-  <!-- 状态概览 -->
-  <div class="aipet-settings-section">
-    <div class="aipet-section-label">📊 当前状态</div>
-    <div id="aipet-status-text" class="aipet-status-block">
-      <!-- 由 JS 动态填充 -->
-      <span class="aipet-text-muted">加载中...</span>
-    </div>
+  <!-- 插件总开关 -->
+  <div class="ai-pet-settings-row">
+    <label class="ai-pet-settings-label" for="ai-pet-enabled">
+      插件总开关
+    </label>
+    <label class="ai-pet-toggle" aria-label="启用或禁用AI桌宠插件">
+      <input type="checkbox" id="ai-pet-enabled" />
+      <span class="ai-pet-toggle-slider"></span>
+    </label>
   </div>
 
-  <!-- 基础设置 -->
-  <div class="aipet-settings-section">
-    <div class="aipet-section-label">⚙️ 基础设置</div>
+  <div class="ai-pet-settings-divider"></div>
 
-    <div class="aipet-form-row">
-      <label class="aipet-form-label" for="aipet-enabled">插件总开关</label>
-      <label class="aipet-toggle" aria-label="启用或禁用插件">
-        <input type="checkbox" id="aipet-enabled" />
-        <span class="aipet-toggle-slider"></span>
+  <!-- 模式选择 -->
+  <div class="ai-pet-settings-row">
+    <label class="ai-pet-settings-label" for="ai-pet-mode">
+      互动模式
+    </label>
+    <select id="ai-pet-mode" class="ai-pet-select" aria-label="选择互动模式">
+      <option value="free">🆓 免费模式</option>
+      <option value="api">🔑 API模式</option>
+    </select>
+  </div>
+
+  <div class="ai-pet-settings-divider"></div>
+
+  <!-- API配置（Phase 4 展开，现在占位） -->
+  <div class="ai-pet-settings-section" id="ai-pet-api-section">
+    <div class="ai-pet-settings-section-title">副API配置</div>
+
+    <div class="ai-pet-settings-row ai-pet-settings-col">
+      <label class="ai-pet-settings-label" for="ai-pet-api-key">
+        API Key
       </label>
+      <input
+        type="password"
+        id="ai-pet-api-key"
+        class="ai-pet-input"
+        placeholder="sk-... （Phase 4 启用）"
+        disabled
+        aria-label="副API Key"
+      />
     </div>
 
-    <div class="aipet-form-row">
-      <label class="aipet-form-label" for="aipet-mode">运行模式</label>
-      <select id="aipet-mode" class="aipet-select">
-        <option value="free">🆓 免费模式</option>
-        <option value="api">🔑 API 模式</option>
-      </select>
+    <div class="ai-pet-settings-row ai-pet-settings-col">
+      <label class="ai-pet-settings-label" for="ai-pet-api-model">
+        模型
+      </label>
+      <input
+        type="text"
+        id="ai-pet-api-model"
+        class="ai-pet-input"
+        placeholder="例：claude-3-haiku-20240307（Phase 4 启用）"
+        disabled
+        aria-label="副API模型"
+      />
     </div>
 
-    <div class="aipet-form-row">
-      <label class="aipet-form-label" for="aipet-log-level">日志级别</label>
-      <select id="aipet-log-level" class="aipet-select">
-        <option value="verbose">详细（verbose）</option>
-        <option value="error">仅报错（error）</option>
-      </select>
+    <div class="ai-pet-settings-row">
+      <button
+        id="ai-pet-api-test"
+        class="ai-pet-btn ai-pet-btn--secondary"
+        disabled
+        aria-label="测试API连通性"
+      >
+        🔌 测试连通性
+      </button>
+      <span id="ai-pet-api-test-result" class="ai-pet-api-test-result"></span>
     </div>
   </div>
 
-      <!-- 消息模板 -->
-    <div class="aipet-settings-section">
-      <div class="aipet-section-label">💬 消息模板</div>
+  <div class="ai-pet-settings-divider"></div>
 
-      <div class="aipet-form-col">
-        <label class="aipet-form-label" for="aipet-msg-template">信息面板模板</label>
-        <textarea
-          id="aipet-msg-template"
-          class="aipet-textarea"
-          rows="3"
-          placeholder="{petName}这次和{charName}聊天消耗了{tokens}tk，用时{time}秒，第{floor}楼"
-          aria-label="消息信息面板模板"
-        ></textarea>
-        <div class="aipet-form-hint">
-          可用变量：<code>{petName}</code> <code>{charName}</code>
-          <code>{tokens}</code> <code>{time}</code> <code>{floor}</code>
-        </div>
+  <!-- 消息模板 -->
+  <div class="ai-pet-settings-section">
+    <div class="ai-pet-settings-section-title">消息信息模板</div>
+    <div class="ai-pet-settings-row ai-pet-settings-col">
+      <label class="ai-pet-settings-label" for="ai-pet-msg-template">
+        模板内容
+      </label>
+      <textarea
+        id="ai-pet-msg-template"
+        class="ai-pet-textarea"
+        rows="3"
+        placeholder="{petName}这次和{charName}聊天消耗了{tokens}tk，用时{time}秒，第{floor}楼"
+        aria-label="消息信息模板"
+      ></textarea>
+      <span class="ai-pet-hint">
+        可用变量：{petName} {charName} {tokens} {time} {floor}
+      </span>
+    </div>
+    <div class="ai-pet-settings-row">
+      <button
+        id="ai-pet-template-save"
+        class="ai-pet-btn ai-pet-btn--primary"
+        aria-label="保存消息模板"
+      >
+        💾 保存模板
+      </button>
+      <span id="ai-pet-template-save-result" class="ai-pet-api-test-result"></span>
+    </div>
+  </div>
+
+  <div class="ai-pet-settings-divider"></div>
+
+  <!-- 全局统计 -->
+  <div class="ai-pet-settings-section">
+    <div class="ai-pet-settings-section-title">全局统计</div>
+    <div class="ai-pet-stats-grid">
+      <div class="ai-pet-stat-item">
+        <span class="ai-pet-stat-icon">🪙</span>
+        <span class="ai-pet-stat-value" id="settings-total-tokens">0</span>
+        <span class="ai-pet-stat-label">总Token</span>
+      </div>
+      <div class="ai-pet-stat-item">
+        <span class="ai-pet-stat-icon">💬</span>
+        <span class="ai-pet-stat-value" id="settings-total-msgs">0</span>
+        <span class="ai-pet-stat-label">总消息</span>
+      </div>
+      <div class="ai-pet-stat-item">
+        <span class="ai-pet-stat-icon">⏱️</span>
+        <span class="ai-pet-stat-value" id="settings-avg-time">0s</span>
+        <span class="ai-pet-stat-label">平均响应</span>
+      </div>
+      <div class="ai-pet-stat-item">
+        <span class="ai-pet-stat-icon">✨</span>
+        <span class="ai-pet-stat-value" id="settings-session-tokens">0</span>
+        <span class="ai-pet-stat-label">本次会话</span>
       </div>
     </div>
+  </div>
 
-    <!-- API 配置 -->
-    <div class="aipet-settings-section">
-      <div class="aipet-section-label">🔑 副 API 配置</div>
+  <div class="ai-pet-settings-divider"></div>
 
-      <div class="aipet-form-col">
-        <label class="aipet-form-label" for="aipet-api-key">添加 API Key</label>
-        <div class="aipet-input-row">
-          <input
-            type="password"
-            id="aipet-api-key"
-            class="aipet-input"
-            placeholder="sk-... 或 AIza..."
-            aria-label="输入 API Key"
-            autocomplete="off"
-          />
-          <button id="aipet-api-key-save" class="aipet-btn aipet-btn-primary" aria-label="保存 API Key">
-            添加
-          </button>
-        </div>
-      </div>
+  <!-- 日志级别 -->
+  <div class="ai-pet-settings-row">
+    <label class="ai-pet-settings-label" for="ai-pet-log-level">
+      日志级别
+    </label>
+    <select id="ai-pet-log-level" class="ai-pet-select" aria-label="选择日志级别">
+      <option value="verbose">详细（verbose）</option>
+      <option value="error">仅报错（error）</option>
+    </select>
+  </div>
 
-      <div class="aipet-form-col">
-        <label class="aipet-form-label">已保存的 Keys</label>
-        <div id="aipet-api-key-list" class="aipet-key-list">
-          <span class="aipet-text-muted">暂无 Key</span>
-        </div>
-      </div>
+  <div class="ai-pet-settings-divider"></div>
 
-      <div class="aipet-form-col">
-        <label class="aipet-form-label" for="aipet-model">模型名称</label>
-        <input
-          type="text"
-          id="aipet-model"
-          class="aipet-input"
-          placeholder="gemini-2.0-flash"
-          aria-label="模型名称"
-        />
-        <div class="aipet-form-hint">留空默认使用 gemini-2.0-flash</div>
-      </div>
-
-      <div class="aipet-form-col">
-        <button id="aipet-api-test" class="aipet-btn aipet-btn-secondary" aria-label="测试 API 连通性">
-          🔌 测试连通性
-        </button>
-        <div id="aipet-api-test-result" class="aipet-test-result" aria-live="polite"></div>
-      </div>
+  <!-- 数据管理 -->
+  <div class="ai-pet-settings-section">
+    <div class="ai-pet-settings-section-title">数据管理</div>
+    <div class="ai-pet-settings-row" style="gap:8px; flex-wrap:wrap;">
+      <button
+        id="ai-pet-export"
+        class="ai-pet-btn ai-pet-btn--secondary"
+        aria-label="导出桌宠数据为JSON"
+      >
+        📤 导出数据
+      </button>
+      <button
+        id="ai-pet-clear-all"
+        class="ai-pet-btn ai-pet-btn--danger"
+        aria-label="清空所有桌宠数据"
+      >
+        🗑️ 清空全部
+      </button>
     </div>
-
-    <!-- 数据管理 -->
-    <div class="aipet-settings-section">
-      <div class="aipet-section-label">🗂️ 数据管理</div>
-
-      <div class="aipet-btn-group">
-        <button id="aipet-export" class="aipet-btn aipet-btn-secondary" aria-label="导出数据为 JSON">
-          📤 导出数据
-        </button>
-        <button id="aipet-clear-data" class="aipet-btn aipet-btn-danger" aria-label="清空所有数据">
-          🗑️ 清空数据
-        </button>
-      </div>
-    </div>
-
-    <!-- 关于 -->
-    <div class="aipet-settings-section aipet-settings-about">
-      <div class="aipet-section-label">ℹ️ 关于</div>
-      <div class="aipet-about-text">
-        <span>AI桌宠系统 v1.0.0</span>
-        <span class="aipet-text-muted">SillyTavern Extension · Phase 1 地基</span>
-        <span class="aipet-text-muted">纯原生 JS · 无外部依赖</span>
-      </div>
-    </div>
+  </div>
 
 </div>
 

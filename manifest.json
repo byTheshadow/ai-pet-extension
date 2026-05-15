@@ -1,14 +1,17 @@
 {
-  "display_name": "AI桌宠系统",
-  "loading_order": 10,
+  "display_name": "AI Pet - 桌宠系统",
+  "version": "1.0.0",
+  "author": "AI Pet Project",
+  "description": "在SillyTavern中养两只AI品牌桌宠，支持免费互动与API互动模式。",
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
-  "html": "settings.html",
-  "settings_css": "settings.css",
-  "author": "",
-  "version": "1.0.0",
-  "homePage": "",
-  "auto_update": false
+  "settings": {
+    "html": "settings.html",
+    "css": "settings.css"
+  },
+  "homepage": "",
+  "tags": ["pet", "ui", "interactive"]
 }
+
