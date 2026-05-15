@@ -1,0 +1,14 @@
+{
+  "display_name": "AI桌宠系统",
+  "loading_order": 10,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "html": "settings.html",
+  "settings_css": "settings.css",
+  "author": "",
+  "version": "1.0.0",
+  "homePage": "",
+  "auto_update": false
+}
