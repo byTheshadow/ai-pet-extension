@@ -1,0 +1,143 @@
+<div id="aipet-settings-root" class="aipet-settings-root">
+
+  <!-- 标题栏 -->
+  <div class="aipet-settings-header">
+    <span class="aipet-settings-logo">🐾</span>
+    <div>
+      <div class="aipet-settings-title">AI桌宠系统</div>
+      <div class="aipet-settings-version">v1.0.0 · Phase 1</div>
+    </div>
+  </div>
+
+  <!-- 状态概览 -->
+  <div class="aipet-settings-section">
+    <div class="aipet-section-label">📊 当前状态</div>
+    <div id="aipet-status-text" class="aipet-status-block">
+      <!-- 由 JS 动态填充 -->
+      <span class="aipet-text-muted">加载中...</span>
+    </div>
+  </div>
+
+  <!-- 基础设置 -->
+  <div class="aipet-settings-section">
+    <div class="aipet-section-label">⚙️ 基础设置</div>
+
+    <div class="aipet-form-row">
+      <label class="aipet-form-label" for="aipet-enabled">插件总开关</label>
+      <label class="aipet-toggle" aria-label="启用或禁用插件">
+        <input type="checkbox" id="aipet-enabled" />
+        <span class="aipet-toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="aipet-form-row">
+      <label class="aipet-form-label" for="aipet-mode">运行模式</label>
+      <select id="aipet-mode" class="aipet-select">
+        <option value="free">🆓 免费模式</option>
+        <option value="api">🔑 API 模式</option>
+      </select>
+    </div>
+
+    <div class="aipet-form-row">
+      <label class="aipet-form-label" for="aipet-log-level">日志级别</label>
+      <select id="aipet-log-level" class="aipet-select">
+        <option value="verbose">详细（verbose）</option>
+        <option value="error">仅报错（error）</option>
+      </select>
+    </div>
+  </div>
+
+      <!-- 消息模板 -->
+    <div class="aipet-settings-section">
+      <div class="aipet-section-label">💬 消息模板</div>
+
+      <div class="aipet-form-col">
+        <label class="aipet-form-label" for="aipet-msg-template">信息面板模板</label>
+        <textarea
+          id="aipet-msg-template"
+          class="aipet-textarea"
+          rows="3"
+          placeholder="{petName}这次和{charName}聊天消耗了{tokens}tk，用时{time}秒，第{floor}楼"
+          aria-label="消息信息面板模板"
+        ></textarea>
+        <div class="aipet-form-hint">
+          可用变量：<code>{petName}</code> <code>{charName}</code>
+          <code>{tokens}</code> <code>{time}</code> <code>{floor}</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- API 配置 -->
+    <div class="aipet-settings-section">
+      <div class="aipet-section-label">🔑 副 API 配置</div>
+
+      <div class="aipet-form-col">
+        <label class="aipet-form-label" for="aipet-api-key">添加 API Key</label>
+        <div class="aipet-input-row">
+          <input
+            type="password"
+            id="aipet-api-key"
+            class="aipet-input"
+            placeholder="sk-... 或 AIza..."
+            aria-label="输入 API Key"
+            autocomplete="off"
+          />
+          <button id="aipet-api-key-save" class="aipet-btn aipet-btn-primary" aria-label="保存 API Key">
+            添加
+          </button>
+        </div>
+      </div>
+
+      <div class="aipet-form-col">
+        <label class="aipet-form-label">已保存的 Keys</label>
+        <div id="aipet-api-key-list" class="aipet-key-list">
+          <span class="aipet-text-muted">暂无 Key</span>
+        </div>
+      </div>
+
+      <div class="aipet-form-col">
+        <label class="aipet-form-label" for="aipet-model">模型名称</label>
+        <input
+          type="text"
+          id="aipet-model"
+          class="aipet-input"
+          placeholder="gemini-2.0-flash"
+          aria-label="模型名称"
+        />
+        <div class="aipet-form-hint">留空默认使用 gemini-2.0-flash</div>
+      </div>
+
+      <div class="aipet-form-col">
+        <button id="aipet-api-test" class="aipet-btn aipet-btn-secondary" aria-label="测试 API 连通性">
+          🔌 测试连通性
+        </button>
+        <div id="aipet-api-test-result" class="aipet-test-result" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <!-- 数据管理 -->
+    <div class="aipet-settings-section">
+      <div class="aipet-section-label">🗂️ 数据管理</div>
+
+      <div class="aipet-btn-group">
+        <button id="aipet-export" class="aipet-btn aipet-btn-secondary" aria-label="导出数据为 JSON">
+          📤 导出数据
+        </button>
+        <button id="aipet-clear-data" class="aipet-btn aipet-btn-danger" aria-label="清空所有数据">
+          🗑️ 清空数据
+        </button>
+      </div>
+    </div>
+
+    <!-- 关于 -->
+    <div class="aipet-settings-section aipet-settings-about">
+      <div class="aipet-section-label">ℹ️ 关于</div>
+      <div class="aipet-about-text">
+        <span>AI桌宠系统 v1.0.0</span>
+        <span class="aipet-text-muted">SillyTavern Extension · Phase 1 地基</span>
+        <span class="aipet-text-muted">纯原生 JS · 无外部依赖</span>
+      </div>
+    </div>
+
+</div>
+
