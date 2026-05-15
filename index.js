@@ -143,82 +143,6 @@ function initData() {
 /* BLOCK END: 数据持久化 */
 
 /* ============================================================ */
-/* BLOCK START: ST事件监听                                       */
-/* ============================================================ */
-
-let lastMessageMeta = {
-  tokens:       0,
-  responseTime: 0,
-  floor:        0,
-  charName:     "",
-};
-let _msgStartTime = 0;
-
-function onMessageSent(messageId) {
-  _msgStartTime = Date.now();
-  log("消息发送，开始计时", messageId);
-}
-
-function onMessageReceived(messageId) {
-  try {
-    const data = loadData();
-    if (!data?.settings?.enabled) return;
-
-    const elapsed = _msgStartTime
-      ? ((Date.now() - _msgStartTime) / 1000).toFixed(1)
-      : 0;
-    _msgStartTime = 0;
-
-    const ctx  = (typeof getContext === "function") ? getContext() : null;
-    const chat = ctx?.chat || [];
-    const msg  = chat[messageId];
-
-    lastMessageMeta = {
-      tokens:       msg?.extra?.token_count || 0,
-      responseTime: elapsed,
-      floor:        messageId,
-      charName:     msg?.name || ctx?.name2 || "",
-    };
-
-    data.globalStats.totalMessages     += 1;
-    data.globalStats.totalTokens       += lastMessageMeta.tokens;
-    data.globalStats.totalResponseTime += parseFloat(elapsed);
-    data.globalStats.sessionTokens     += lastMessageMeta.tokens;
-    saveData(data);
-
-    log("收到消息", lastMessageMeta);
-
-    // 注入emoji按钮（延迟一帧确保DOM已渲染）
-    setTimeout(() => injectEmojiButton(messageId), 100);
-    refreshSettingsStats(data);
-
-  } catch (e) {
-    logError("onMessageReceived 处理失败", e);
-  }
-}
-
-function onCharacterMessageRendered(messageId) {
-  setTimeout(() => injectEmojiButton(messageId), 50);
-}
-
-function bindSTEvents() {
-  try {
-    // 传统 ST 扩展事件系统
-    eventSource.on(event_types.MESSAGE_SENT,     onMessageSent);
-    eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
-    // CHARACTER_MESSAGE_RENDERED 确保DOM渲染后注入按钮
-    if (event_types.CHARACTER_MESSAGE_RENDERED) {
-      eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
-    }
-    log("ST事件监听已绑定");
-  } catch (e) {
-    logError("ST事件绑定失败", e);
-  }
-}
-
-/* BLOCK END: ST事件监听 */
-
-/* ============================================================ */
 /* BLOCK START: Emoji按钮注入                                    */
 /* ============================================================ */
 
@@ -591,6 +515,100 @@ function bindSettingsPanel() {
 }
 
 /* BLOCK END: 设置面板联动 */
+/* ============================================================ */
+/* BLOCK START: ST事件监听                                       */
+/* ============================================================ */
+
+let lastMessageMeta = {
+  tokens:       0,
+  responseTime: 0,
+  floor:        0,
+  charName:     "",
+};
+let _msgStartTime = 0;
+
+function onMessageSent(messageId) {
+  _msgStartTime = Date.now();
+  log("消息发送，开始计时", messageId);
+}
+
+function onMessageReceived(messageId) {
+  try {
+    const data = loadData();
+    if (!data?.settings?.enabled) return;
+
+    const elapsed = _msgStartTime
+      ? ((Date.now() - _msgStartTime) / 1000).toFixed(1)
+      : 0;
+    _msgStartTime = 0;
+
+    const ctx  = (typeof getContext === "function") ? getContext() : null;
+    const chat = ctx?.chat || [];
+    const msg  = chat[messageId];
+
+    lastMessageMeta = {
+      tokens:       msg?.extra?.token_count || 0,
+      responseTime: elapsed,
+      floor:        messageId,
+      charName:     msg?.name || ctx?.name2 || "",
+    };
+
+    data.globalStats.totalMessages     += 1;
+    data.globalStats.totalTokens       += lastMessageMeta.tokens;
+    data.globalStats.totalResponseTime += parseFloat(elapsed);
+    data.globalStats.sessionTokens     += lastMessageMeta.tokens;
+    saveData(data);
+
+    log("收到消息", lastMessageMeta);
+
+    setTimeout(() => injectEmojiButton(messageId), 100);
+    refreshSettingsStats(data);
+
+  } catch (e) {
+    logError("onMessageReceived 处理失败", e);
+  }
+}
+
+function onCharacterMessageRendered(messageId) {
+  setTimeout(() => injectEmojiButton(messageId), 50);
+}
+
+function bindSTEvents() {
+  // 轮询等待 eventSource 就绪，最多等 30 秒
+  let attempts    = 0;
+  const maxAttempts = 300; // 300 * 100ms = 30s
+
+  const tryBind = () => {
+    attempts++;
+
+    if (typeof eventSource === "undefined" || typeof event_types === "undefined") {
+      if (attempts >= maxAttempts) {
+        logError("等待 eventSource 超时，事件监听未能绑定");
+        return;
+      }
+      setTimeout(tryBind, 100);
+      return;
+    }
+
+    // eventSource 就绪，绑定事件
+    try {
+      eventSource.on(event_types.MESSAGE_SENT,     onMessageSent);
+      eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
+
+      if (event_types.CHARACTER_MESSAGE_RENDERED) {
+        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
+      }
+
+      log(`ST事件监听已绑定（等待了 ${attempts * 100}ms）`);
+    } catch (e) {
+      logError("ST事件绑定失败", e);
+    }
+  };
+
+  tryBind();
+}
+
+/* BLOCK END: ST事件监听 */
 
 /* ============================================================ */
 /* BLOCK START: 插件入口与初始化                                  */
@@ -600,10 +618,10 @@ function bindSettingsPanel() {
   try {
     console.log(`[${AI_PET_NAME}] v${AI_PET_VERSION} 正在初始化…`);
 
-    // 1. 初始化数据（此时 extension_settings 已就绪）
+    // 1. 初始化数据（localStorage 随时可用）
     initData();
 
-    // 2. 绑定 ST 传统事件（eventSource + event_types 此时已就绪）
+    // 2. 绑定 ST 事件（内部轮询等待 eventSource 就绪）
     bindSTEvents();
 
     // 3. 绑定设置面板 & 构建悬浮窗
@@ -624,6 +642,3 @@ function bindSettingsPanel() {
 })();
 
 /* BLOCK END: 插件入口与初始化 */
-
-
-
