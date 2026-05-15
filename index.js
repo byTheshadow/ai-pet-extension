@@ -571,12 +571,11 @@ function bindSettingsPanel() {
 /* BLOCK START: 插件入口与初始化                                  */
 /* ============================================================ */
 
-// ST 扩展的标准入口：等待 jQuery ready，此时 extension_settings 已就绪
-jQuery(async () => {
+function initAiPet() {
   try {
     console.log(`[${AI_PET_NAME}] v${AI_PET_VERSION} 正在初始化…`);
 
-    // 1. 初始化数据（此时 extension_settings 已由 ST 注入）
+    // 1. 初始化数据
     initSettings();
 
     // 2. 绑定 ST 事件
@@ -585,10 +584,44 @@ jQuery(async () => {
     // 3. 绑定设置面板
     bindSettingsPanel();
 
-    log(`初始化完成 ✓`);
+    log("初始化完成 ✓");
   } catch (e) {
     console.error(`[${AI_PET_NAME}][ERROR] 插件初始化失败`, e);
   }
+}
+
+// ST 扩展标准入口：监听 APP_READY 事件，此时所有全局变量已就绪
+jQuery(async () => {
+  // 先尝试直接访问，如果已经就绪就直接跑
+  if (typeof extension_settings !== "undefined") {
+    initAiPet();
+    return;
+  }
+
+  // 否则等待 ST 的就绪事件
+  // ST 1.12+ 使用 eventSource + event_types.APP_READY
+  const tryInit = () => {
+    if (typeof extension_settings !== "undefined") {
+      initAiPet();
+      return true;
+    }
+    return false;
+  };
+
+  // 轮询等待，最多等 10 秒
+  let attempts = 0;
+  const maxAttempts = 100; // 100 * 100ms = 10s
+  const timer = setInterval(() => {
+    attempts++;
+    if (tryInit()) {
+      clearInterval(timer);
+      return;
+    }
+    if (attempts >= maxAttempts) {
+      clearInterval(timer);
+      console.error(`[${AI_PET_NAME}][ERROR] 等待 extension_settings 超时，插件未能初始化`);
+    }
+  }, 100);
 });
 
 /* BLOCK END: 插件入口与初始化 */
