@@ -53,30 +53,28 @@ const DEFAULT_SETTINGS = {
 /* ============================================================ */
 
 function log(msg, data) {
-  const settings = getAiPetSettings();
-  if (!settings || settings.logLevel === "verbose") {
-    if (data !== undefined) {
-      console.log(`[${AI_PET_NAME}] ${msg}`, data);
-    } else {
-      console.log(`[${AI_PET_NAME}] ${msg}`);
+  try {
+    const s = extension_settings[AI_PET_KEY];
+    if (!s || s.settings?.logLevel === "verbose") {
+      data !== undefined
+        ? console.log(`[${AI_PET_NAME}] ${msg}`, data)
+        : console.log(`[${AI_PET_NAME}] ${msg}`);
     }
+  } catch (e) {
+    console.log(`[${AI_PET_NAME}] ${msg}`, data ?? "");
   }
 }
 
 function logError(msg, err) {
-  if (err !== undefined) {
-    console.error(`[${AI_PET_NAME}][ERROR] ${msg}`, err);
-  } else {
-    console.error(`[${AI_PET_NAME}][ERROR] ${msg}`);
-  }
+  err !== undefined
+    ? console.error(`[${AI_PET_NAME}][ERROR] ${msg}`, err)
+    : console.error(`[${AI_PET_NAME}][ERROR] ${msg}`);
 }
 
 function logWarn(msg, data) {
-  if (data !== undefined) {
-    console.warn(`[${AI_PET_NAME}][WARN] ${msg}`, data);
-  } else {
-    console.warn(`[${AI_PET_NAME}][WARN] ${msg}`);
-  }
+  data !== undefined
+    ? console.warn(`[${AI_PET_NAME}][WARN] ${msg}`, data)
+    : console.warn(`[${AI_PET_NAME}][WARN] ${msg}`);
 }
 
 /* BLOCK END: 日志系统 */
@@ -98,12 +96,11 @@ function initSettings() {
     extension_settings[AI_PET_KEY] = structuredClone(DEFAULT_SETTINGS);
     log("首次初始化默认设置");
   } else {
-    // 补全缺失字段（版本升级兼容）
     const s = extension_settings[AI_PET_KEY];
-    if (!s.settings)      s.settings      = structuredClone(DEFAULT_SETTINGS.settings);
-    if (!s.pets)          s.pets          = structuredClone(DEFAULT_SETTINGS.pets);
-    if (!s.relationship)  s.relationship  = structuredClone(DEFAULT_SETTINGS.relationship);
-    if (!s.globalStats)   s.globalStats   = structuredClone(DEFAULT_SETTINGS.globalStats);
+    if (!s.settings)     s.settings     = structuredClone(DEFAULT_SETTINGS.settings);
+    if (!s.pets)         s.pets         = structuredClone(DEFAULT_SETTINGS.pets);
+    if (!s.relationship) s.relationship = structuredClone(DEFAULT_SETTINGS.relationship);
+    if (!s.globalStats)  s.globalStats  = structuredClone(DEFAULT_SETTINGS.globalStats);
     log("已加载已有设置，缺失字段已补全");
   }
   saveSettingsDebounced();
@@ -124,7 +121,6 @@ function saveData() {
 /* BLOCK START: ST事件监听                                       */
 /* ============================================================ */
 
-// 记录最后一条消息的元数据，供桌宠台词使用
 let lastMessageMeta = {
   tokens:       0,
   responseTime: 0,
@@ -141,7 +137,12 @@ function onMessageSending() {
 
 function onMessageReceived(messageId) {
   try {
-    const elapsed = _msgStartTime ? ((Date.now() - _msgStartTime) / 1000).toFixed(1) : 0;
+    const s = extension_settings[AI_PET_KEY];
+    if (!s?.settings?.enabled) return;
+
+    const elapsed = _msgStartTime
+      ? ((Date.now() - _msgStartTime) / 1000).toFixed(1)
+      : 0;
     _msgStartTime = 0;
 
     const context = getContext();
@@ -153,7 +154,6 @@ function onMessageReceived(messageId) {
       return;
     }
 
-    // 更新最后消息元数据
     lastMessageMeta = {
       tokens:       msg.extra?.token_count || 0,
       responseTime: elapsed,
@@ -161,8 +161,7 @@ function onMessageReceived(messageId) {
       charName:     msg.name || "",
     };
 
-    // 更新全局统计
-    const gs = extension_settings[AI_PET_KEY].globalStats;
+    const gs = s.globalStats;
     gs.totalMessages     += 1;
     gs.totalTokens       += lastMessageMeta.tokens;
     gs.totalResponseTime += parseFloat(elapsed);
@@ -171,8 +170,8 @@ function onMessageReceived(messageId) {
 
     log("收到消息", lastMessageMeta);
 
-    // 注入emoji按钮到最后一条AI消息
     injectEmojiButton(messageId);
+    refreshSettingsStats();
 
   } catch (e) {
     logError("onMessageReceived 处理失败", e);
@@ -197,16 +196,12 @@ function bindSTEvents() {
 
 function injectEmojiButton(messageId) {
   try {
-    // 找到对应楼层的消息DOM
-    const msgEl = document.querySelector(
-      `.mes[mesid="${messageId}"]`
-    );
+    const msgEl = document.querySelector(`.mes[mesid="${messageId}"]`);
     if (!msgEl) {
       logWarn("injectEmojiButton: 找不到消息DOM", messageId);
       return;
     }
 
-    // 避免重复注入
     if (msgEl.querySelector(".ai-pet-emoji-btn")) return;
 
     const btn = document.createElement("button");
@@ -220,11 +215,11 @@ function injectEmojiButton(messageId) {
       openPetWindow();
     });
 
-    // 注入到消息框右下角
-    const extraBtns = msgEl.querySelector(".extraMesButtons")
-                   || msgEl.querySelector(".mes_buttons")
-                   || msgEl;
-    extraBtns.appendChild(btn);
+    // 优先注入到消息按钮区，找不到就追加到消息根元素
+    const target = msgEl.querySelector(".extraMesButtons")
+                || msgEl.querySelector(".mes_buttons")
+                || msgEl;
+    target.appendChild(btn);
 
     log("emoji按钮已注入到楼层", messageId);
   } catch (e) {
@@ -238,52 +233,40 @@ function injectEmojiButton(messageId) {
 /* BLOCK START: 拓麻歌子悬浮窗                                   */
 /* ============================================================ */
 
-let petWindowEl   = null;
-let isDragging    = false;
-let dragOffsetX   = 0;
-let dragOffsetY   = 0;
-let currentScreen = "home"; // home | select | manage | stats
+let petWindowEl = null;
+let isDragging  = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
 
 function buildPetWindow() {
   if (petWindowEl) return;
 
   const el = document.createElement("div");
   el.id        = "ai-pet-window";
-  el.className = "ai-pet-window";
+  el.className = "ai-pet-window hidden";
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "AI桌宠系统");
   el.setAttribute("aria-modal", "true");
 
   el.innerHTML = `
-    <!-- 拓麻歌子外壳 -->
     <div class="tama-shell">
-
-      <!-- 顶部装饰条 -->
       <div class="tama-top-bar">
         <span class="tama-top-dot"></span>
         <span class="tama-title-text">AI PET</span>
         <span class="tama-top-dot"></span>
       </div>
 
-      <!-- 屏幕区域 -->
       <div class="tama-screen-bezel">
         <div class="tama-screen" id="ai-pet-screen">
-
-          <!-- 加载状态 -->
           <div class="pet-screen-loading hidden" id="pet-loading">
             <div class="pet-loading-spinner"></div>
             <span>正在加载…</span>
           </div>
-
-          <!-- 错误状态 -->
           <div class="pet-screen-error hidden" id="pet-error">
             <span class="pet-error-icon">⚠️</span>
             <span id="pet-error-msg">出错了</span>
           </div>
-
-          <!-- 主屏幕内容（动态渲染） -->
           <div id="pet-screen-content">
-            <!-- Phase 1: 占位主页 -->
             <div class="pet-home-placeholder">
               <div class="pet-slot-row">
                 <div class="pet-slot empty" id="pet-slot-1" data-slot="1">
@@ -305,46 +288,34 @@ function buildPetWindow() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
-      <!-- 底部按钮区 -->
       <div class="tama-buttons">
-        <button class="tama-btn" id="tama-btn-left"  aria-label="左键" title="菜单">◀</button>
+        <button class="tama-btn" id="tama-btn-left"   aria-label="左键"  title="菜单">◀</button>
         <button class="tama-btn tama-btn-center" id="tama-btn-center" aria-label="确认" title="确认">●</button>
-        <button class="tama-btn" id="tama-btn-right" aria-label="右键" title="取消">▶</button>
+        <button class="tama-btn" id="tama-btn-right"  aria-label="右键"  title="取消">▶</button>
       </div>
 
-      <!-- 关闭按钮 -->
       <button class="tama-close-btn" id="tama-close" aria-label="关闭桌宠面板" title="关闭">✕</button>
-
     </div>
   `;
 
   document.body.appendChild(el);
   petWindowEl = el;
 
-  // 绑定关闭
   el.querySelector("#tama-close").addEventListener("click", closePetWindow);
-
-  // 绑定底部按钮（Phase 1 占位）
   el.querySelector("#tama-btn-left").addEventListener("click",   () => onTamaBtn("left"));
   el.querySelector("#tama-btn-center").addEventListener("click", () => onTamaBtn("center"));
   el.querySelector("#tama-btn-right").addEventListener("click",  () => onTamaBtn("right"));
-
-  // 绑定槽位点击
   el.addEventListener("click", onPetWindowClick);
 
-  // PC拖动
   bindDrag(el);
-
   log("拓麻歌子窗口已构建");
 }
 
 function onTamaBtn(btn) {
   log("拓麻歌子按钮点击", btn);
-  // Phase 2+ 实现具体逻辑
 }
 
 function onPetWindowClick(e) {
@@ -352,7 +323,6 @@ function onPetWindowClick(e) {
   if (slot) {
     const slotId = slot.dataset.slot;
     log("点击槽位", slotId);
-    // Phase 2 实现：打开桌宠选择/管理界面
     showToast(`槽位 ${slotId} — 桌宠功能将在 Phase 2 开放`);
   }
 }
@@ -394,7 +364,6 @@ function bindDrag(el) {
   if (!shell) return;
 
   shell.addEventListener("mousedown", (e) => {
-    // 不拦截按钮点击
     if (e.target.closest("button")) return;
     isDragging  = true;
     dragOffsetX = e.clientX - el.getBoundingClientRect().left;
@@ -405,20 +374,19 @@ function bindDrag(el) {
 
   document.addEventListener("mousemove", (e) => {
     if (!isDragging) return;
-    const x = e.clientX - dragOffsetX;
-    const y = e.clientY - dragOffsetY;
-    // 限制在视口内
+    const x   = e.clientX - dragOffsetX;
+    const y   = e.clientY - dragOffsetY;
     const maxX = window.innerWidth  - el.offsetWidth;
     const maxY = window.innerHeight - el.offsetHeight;
-    el.style.left = `${Math.max(0, Math.min(x, maxX))}px`;
-    el.style.top  = `${Math.max(0, Math.min(y, maxY))}px`;
+    el.style.left   = `${Math.max(0, Math.min(x, maxX))}px`;
+    el.style.top    = `${Math.max(0, Math.min(y, maxY))}px`;
     el.style.right  = "auto";
     el.style.bottom = "auto";
   });
 
   document.addEventListener("mouseup", () => {
     if (isDragging) {
-      isDragging = false;
+      isDragging          = false;
       el.style.transition = "";
     }
   });
@@ -443,14 +411,10 @@ function showToast(msg, type = "info", duration = 3000) {
       toast.setAttribute("aria-live", "polite");
       document.body.appendChild(toast);
     }
-
     toast.textContent = msg;
     toast.className   = `ai-pet-toast ai-pet-toast--${type} visible`;
-
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      toast.classList.remove("visible");
-    }, duration);
+    toastTimer = setTimeout(() => toast.classList.remove("visible"), duration);
   } catch (e) {
     logError("showToast 失败", e);
   }
@@ -459,11 +423,7 @@ function showToast(msg, type = "info", duration = 3000) {
 function showLoading(show) {
   const el = document.getElementById("pet-loading");
   if (!el) return;
-  if (show) {
-    el.classList.remove("hidden");
-  } else {
-    el.classList.add("hidden");
-  }
+  show ? el.classList.remove("hidden") : el.classList.add("hidden");
 }
 
 function showScreenError(msg) {
@@ -481,31 +441,123 @@ function showScreenError(msg) {
 /* BLOCK START: 设置面板联动                                     */
 /* ============================================================ */
 
+function refreshSettingsStats() {
+  try {
+    const gs = extension_settings[AI_PET_KEY]?.globalStats;
+    if (!gs) return;
+
+    const avgTime = gs.totalMessages > 0
+      ? (gs.totalResponseTime / gs.totalMessages).toFixed(1)
+      : 0;
+
+    const el = (id) => document.getElementById(id);
+    if (el("settings-total-tokens"))  el("settings-total-tokens").textContent  = gs.totalTokens;
+    if (el("settings-total-msgs"))    el("settings-total-msgs").textContent    = gs.totalMessages;
+    if (el("settings-avg-time"))      el("settings-avg-time").textContent      = `${avgTime}s`;
+    if (el("settings-session-tokens"))el("settings-session-tokens").textContent = gs.sessionTokens;
+  } catch (e) {
+    logError("refreshSettingsStats 失败", e);
+  }
+}
+
 function bindSettingsPanel() {
   try {
+    const s = extension_settings[AI_PET_KEY].settings;
+
+    // 总开关
     const enabledToggle = document.getElementById("ai-pet-enabled");
     if (enabledToggle) {
-      const s = extension_settings[AI_PET_KEY].settings;
       enabledToggle.checked = s.enabled;
       enabledToggle.addEventListener("change", () => {
         s.enabled = enabledToggle.checked;
         saveData();
+        showToast(s.enabled ? "✅ AI桌宠已启用" : "⏸️ AI桌宠已停用");
         log("插件开关切换", s.enabled);
-        showToast(s.enabled ? "AI桌宠已启用" : "AI桌宠已停用");
       });
     }
 
+    // 模式选择
     const modeSelect = document.getElementById("ai-pet-mode");
     if (modeSelect) {
-      const s = extension_settings[AI_PET_KEY].settings;
       modeSelect.value = s.mode;
       modeSelect.addEventListener("change", () => {
         s.mode = modeSelect.value;
         saveData();
+        showToast(`已切换到${s.mode === "free" ? "🆓 免费" : "🔑 API"}模式`);
         log("模式切换", s.mode);
-        showToast(`已切换到${s.mode === "free" ? "免费" : "API"}模式`);
       });
     }
+
+    // 日志级别
+    const logLevel = document.getElementById("ai-pet-log-level");
+    if (logLevel) {
+      logLevel.value = s.logLevel;
+      logLevel.addEventListener("change", () => {
+        s.logLevel = logLevel.value;
+        saveData();
+        log("日志级别切换", s.logLevel);
+      });
+    }
+
+    // 消息模板
+    const templateInput = document.getElementById("ai-pet-msg-template");
+    if (templateInput) {
+      templateInput.value = s.messageTemplate;
+    }
+
+    const templateSaveBtn    = document.getElementById("ai-pet-template-save");
+    const templateSaveResult = document.getElementById("ai-pet-template-save-result");
+    if (templateSaveBtn) {
+      templateSaveBtn.addEventListener("click", () => {
+        if (!templateInput) return;
+        s.messageTemplate = templateInput.value.trim() || DEFAULT_SETTINGS.settings.messageTemplate;
+        saveData();
+        if (templateSaveResult) {
+          templateSaveResult.textContent = "✅ 已保存";
+          setTimeout(() => { templateSaveResult.textContent = ""; }, 2000);
+        }
+        showToast("消息模板已保存");
+        log("消息模板已保存", s.messageTemplate);
+      });
+    }
+
+    // 导出数据
+    const exportBtn = document.getElementById("ai-pet-export");
+    if (exportBtn) {
+      exportBtn.addEventListener("click", () => {
+        try {
+          const data = JSON.stringify(extension_settings[AI_PET_KEY], null, 2);
+          const blob = new Blob([data], { type: "application/json" });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a");
+          a.href     = url;
+          a.download = `ai-pet-data-${Date.now()}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast("📤 数据已导出");
+          log("数据已导出");
+        } catch (e) {
+          logError("导出数据失败", e);
+          showToast("导出失败", "error");
+        }
+      });
+    }
+
+    // 清空全部
+    const clearBtn = document.getElementById("ai-pet-clear-all");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        if (!confirm("⚠️ 确定要清空所有桌宠数据吗？此操作不可撤销！")) return;
+        extension_settings[AI_PET_KEY] = structuredClone(DEFAULT_SETTINGS);
+        saveData();
+        refreshSettingsStats();
+        showToast("🗑️ 数据已清空", "warn");
+        log("数据已清空");
+      });
+    }
+
+    // 初始刷新统计
+    refreshSettingsStats();
 
     log("设置面板已绑定");
   } catch (e) {
@@ -519,28 +571,25 @@ function bindSettingsPanel() {
 /* BLOCK START: 插件入口与初始化                                  */
 /* ============================================================ */
 
-(function initAiPet() {
+// ST 扩展的标准入口：等待 jQuery ready，此时 extension_settings 已就绪
+jQuery(async () => {
   try {
-    log(`${AI_PET_NAME} v${AI_PET_VERSION} 正在初始化…`);
+    console.log(`[${AI_PET_NAME}] v${AI_PET_VERSION} 正在初始化…`);
 
-    // 1. 初始化数据
+    // 1. 初始化数据（此时 extension_settings 已由 ST 注入）
     initSettings();
 
-    // 2. 绑定ST事件
+    // 2. 绑定 ST 事件
     bindSTEvents();
 
-    // 3. 等待DOM就绪后绑定设置面板
-    //    ST在扩展加载时settings.html已注入，直接绑定
-    jQuery(document).ready(() => {
-      bindSettingsPanel();
-      log("DOM就绪，设置面板已绑定");
-    });
+    // 3. 绑定设置面板
+    bindSettingsPanel();
 
-    log(`${AI_PET_NAME} 初始化完成 ✓`);
+    log(`初始化完成 ✓`);
   } catch (e) {
-    logError("插件初始化失败", e);
+    console.error(`[${AI_PET_NAME}][ERROR] 插件初始化失败`, e);
   }
-})();
+});
 
 /* BLOCK END: 插件入口与初始化 */
 

@@ -7,10 +7,8 @@
   "optional": [],
   "js": "index.js",
   "css": "style.css",
-  "settings": {
-    "html": "settings.html",
-    "css": "settings.css"
-  },
+  "settings_html": "settings.html",
+  "settings_css": "settings.css",
   "homepage": "",
   "tags": ["pet", "ui", "interactive"]
 }
