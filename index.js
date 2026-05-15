@@ -525,7 +525,8 @@ let lastMessageMeta = {
   floor:        0,
   charName:     "",
 };
-let _msgStartTime = 0;
+let _msgStartTime   = 0;
+let _eventsBindDone = false;
 
 function onMessageSent(messageId) {
   _msgStartTime = Date.now();
@@ -574,41 +575,32 @@ function onCharacterMessageRendered(messageId) {
 }
 
 function bindSTEvents() {
-  // 轮询等待 eventSource 就绪，最多等 30 秒
-  let attempts    = 0;
-  const maxAttempts = 300; // 300 * 100ms = 30s
+  if (_eventsBindDone) return;
 
-  const tryBind = () => {
-    attempts++;
+  // 检测 eventSource 是否挂载到 window
+  if (!window.eventSource || !window.event_types) {
+    // 还没就绪，100ms 后重试，不抛异常
+    setTimeout(bindSTEvents, 100);
+    return;
+  }
 
-    if (typeof eventSource === "undefined" || typeof event_types === "undefined") {
-      if (attempts >= maxAttempts) {
-        logError("等待 eventSource 超时，事件监听未能绑定");
-        return;
-      }
-      setTimeout(tryBind, 100);
-      return;
+  try {
+    window.eventSource.on(window.event_types.MESSAGE_SENT,     onMessageSent);
+    window.eventSource.on(window.event_types.MESSAGE_RECEIVED, onMessageReceived);
+
+    if (window.event_types.CHARACTER_MESSAGE_RENDERED) {
+      window.eventSource.on(window.event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
     }
 
-    // eventSource 就绪，绑定事件
-    try {
-      eventSource.on(event_types.MESSAGE_SENT,     onMessageSent);
-      eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
-
-      if (event_types.CHARACTER_MESSAGE_RENDERED) {
-        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
-      }
-
-      log(`ST事件监听已绑定（等待了 ${attempts * 100}ms）`);
-    } catch (e) {
-      logError("ST事件绑定失败", e);
-    }
-  };
-
-  tryBind();
+    _eventsBindDone = true;
+    log("ST事件监听已绑定 ✓");
+  } catch (e) {
+    logError("ST事件绑定失败", e);
+  }
 }
 
 /* BLOCK END: ST事件监听 */
+
 
 /* ============================================================ */
 /* BLOCK START: 插件入口与初始化                                  */
