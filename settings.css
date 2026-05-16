@@ -1,294 +1,497 @@
-/* ============================================================ */
-/* AI桌宠系统 - 设置面板样式                                      */
-/* ============================================================ */
+/* ============================================================
+   AI桌宠系统 - 配置面板样式
+   粉白色系 & 黑白色系（跟随ST主题自动适配 + 手动切换）
+   ============================================================ */
 
-.aipet-settings-wrap {
-  padding:        12px 4px;
-  font-family:    'Segoe UI', system-ui, sans-serif;
-  color:          var(--SmartThemeBodyColor, #cdd9e5);
+/* ── CSS变量：粉白默认 ── */
+.ai-pet-sp-wrap {
+  --sp-bg:          #fff8fb;
+  --sp-bg2:         #fff0f5;
+  --sp-border:      #f9a8d4;
+  --sp-border2:     #fce7f3;
+  --sp-text:        #4a2040;
+  --sp-text2:       #9d6080;
+  --sp-text3:       #c084a0;
+  --sp-accent:      #ec4899;
+  --sp-accent-dim:  rgba(236, 72, 153, 0.12);
+  --sp-btn-bg:      #fce7f3;
+  --sp-btn-hover:   #fbcfe8;
+  --sp-btn-text:    #9d174d;
+  --sp-danger-bg:   #fee2e2;
+  --sp-danger-text: #b91c1c;
+  --sp-danger-hover:#fecaca;
+  --sp-input-bg:    #ffffff;
+  --sp-code-bg:     #fce7f3;
+  --sp-success:     #16a34a;
+  --sp-warn:        #d97706;
+  --sp-error:       #dc2626;
+  --sp-loading:     #ec4899;
+  --sp-shadow:      rgba(236, 72, 153, 0.15);
+  --sp-radius:      10px;
+  --sp-radius-sm:   6px;
 }
 
-/* ── 标题栏 ── */
-.aipet-settings-header {
-  display:        flex;
-  align-items:    center;
-  gap:            8px;
-  margin-bottom:  16px;
-  padding-bottom: 10px;
-  border-bottom:  1px solid rgba(255,255,255,0.08);
+/* ── 跟随ST暗色主题自动切换 ── */
+@media (prefers-color-scheme: dark) {
+  .ai-pet-sp-wrap {
+    --sp-bg:          #1e1a1e;
+    --sp-bg2:         #251e25;
+    --sp-border:      #3d2d3d;
+    --sp-border2:     #2e222e;
+    --sp-text:        #f0e8f0;
+    --sp-text2:       #b090b0;
+    --sp-text3:       #7a5a7a;
+    --sp-accent:      #e879a0;
+    --sp-accent-dim:  rgba(232, 121, 160, 0.15);
+    --sp-btn-bg:      #2e1e2e;
+    --sp-btn-hover:   #3a2a3a;
+    --sp-btn-text:    #f0a0c0;
+    --sp-danger-bg:   #2e1a1a;
+    --sp-danger-text: #f87171;
+    --sp-danger-hover:#3d2020;
+    --sp-input-bg:    #1a141a;
+    --sp-code-bg:     #2e1e2e;
+    --sp-success:     #4ade80;
+    --sp-warn:        #facc15;
+    --sp-error:       #f87171;
+    --sp-loading:     #e879a0;
+    --sp-shadow:      rgba(0, 0, 0, 0.4);
+  }
 }
 
-.aipet-settings-icon  { font-size: 20px; }
-
-.aipet-settings-title {
-  font-size:   15px;
-  font-weight: 700;
-  color:       var(--SmartThemeBodyColor, #e6edf3);
-  flex:        1;
+/* ── 黑白主题（用户手动选择时由JS注入class覆盖） ── */
+.ai-pet-sp-wrap.theme-dark-sp {
+  --sp-bg:          #1a1a1a;
+  --sp-bg2:         #222222;
+  --sp-border:      #333333;
+  --sp-border2:     #2a2a2a;
+  --sp-text:        #f0f0f0;
+  --sp-text2:       #aaaaaa;
+  --sp-text3:       #555555;
+  --sp-accent:      #dddddd;
+  --sp-accent-dim:  rgba(220, 220, 220, 0.1);
+  --sp-btn-bg:      #2a2a2a;
+  --sp-btn-hover:   #333333;
+  --sp-btn-text:    #eeeeee;
+  --sp-danger-bg:   #2a1a1a;
+  --sp-danger-text: #f87171;
+  --sp-danger-hover:#331a1a;
+  --sp-input-bg:    #111111;
+  --sp-code-bg:     #2a2a2a;
+  --sp-success:     #4ade80;
+  --sp-warn:        #facc15;
+  --sp-error:       #f87171;
+  --sp-loading:     #aaaaaa;
+  --sp-shadow:      rgba(0, 0, 0, 0.5);
 }
 
-.aipet-settings-version {
-  font-size:   10px;
-  color:       rgba(255,255,255,0.3);
-  font-family: 'Courier New', monospace;
-  background:  rgba(255,255,255,0.05);
-  padding:     2px 6px;
-  border-radius: 4px;
+/* ============================================================
+   面板容器
+   ============================================================ */
+
+.ai-pet-sp-wrap {
+  background:    var(--sp-bg);
+  border:        1.5px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+  overflow:      hidden;
+  margin-bottom: 12px;
+  box-shadow:    0 2px 12px var(--sp-shadow);
+  font-family:   -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* ── 反馈条 ── */
-.aipet-sp-feedback {
-  padding:       8px 12px;
-  border-radius: 6px;
-  font-size:     12px;
-  margin-bottom: 10px;
-  animation:     aipet-fadein 0.2s ease;
-}
+/* ============================================================
+   标题栏
+   ============================================================ */
 
-.aipet-sp-feedback-ok {
-  background: rgba(63,185,80,0.12);
-  border:     1px solid rgba(63,185,80,0.3);
-  color:      #3fb950;
-}
-
-.aipet-sp-feedback-error {
-  background: rgba(248,81,73,0.12);
-  border:     1px solid rgba(248,81,73,0.3);
-  color:      #f85149;
-}
-
-/* ── 分区 ── */
-.aipet-settings-section {
-  margin-bottom:  16px;
-  padding:        12px;
-  background:     rgba(255,255,255,0.03);
-  border:         1px solid rgba(255,255,255,0.07);
-  border-radius:  10px;
-}
-
-.aipet-settings-section-title {
-  font-size:      11px;
-  font-weight:    700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color:          rgba(255,255,255,0.4);
-  margin-bottom:  10px;
-  display:        flex;
-  align-items:    center;
-  gap:            6px;
-}
-
-.aipet-badge {
-  font-size:      9px;
-  background:     rgba(217,119,87,0.2);
-  color:          #D97757;
-  border:         1px solid rgba(217,119,87,0.35);
-  border-radius:  4px;
-  padding:        1px 5px;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight:    600;
-}
-
-/* ── 设置行 ── */
-.aipet-settings-row {
-  display:        flex;
-  align-items:    center;
+.ai-pet-sp-header {
+  display:         flex;
+  align-items:     center;
   justify-content: space-between;
-  gap:            10px;
-  padding:        6px 0;
-  border-bottom:  1px solid rgba(255,255,255,0.04);
-  cursor:         default;
+  padding:         10px 14px;
+  background:      var(--sp-bg2);
+  border-bottom:   1.5px solid var(--sp-border);
+  cursor:          default;
 }
 
-.aipet-settings-row:last-child {
+.ai-pet-sp-title-row {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+}
+
+.ai-pet-sp-icon {
+  font-size: 16px;
+}
+
+.ai-pet-sp-title {
+  font-size:   14px;
+  font-weight: 700;
+  color:       var(--sp-text);
+  letter-spacing: 0.02em;
+}
+
+.ai-pet-sp-version {
+  font-size:     10px;
+  color:         var(--sp-text3);
+  background:    var(--sp-accent-dim);
+  padding:       1px 6px;
+  border-radius: 8px;
+  font-weight:   600;
+}
+
+.ai-pet-sp-header-right {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+/* ── 总开关Toggle ── */
+.ai-pet-sp-toggle-wrap {
+  position:   relative;
+  display:    inline-block;
+  width:      36px;
+  height:     20px;
+  cursor:     pointer;
+  flex-shrink: 0;
+}
+
+.ai-pet-sp-toggle-wrap input {
+  opacity:  0;
+  width:    0;
+  height:   0;
+  position: absolute;
+}
+
+.ai-pet-sp-toggle-slider {
+  position:      absolute;
+  inset:         0;
+  background:    var(--sp-border);
+  border-radius: 20px;
+  transition:    background 0.2s;
+}
+
+.ai-pet-sp-toggle-slider::before {
+  content:       '';
+  position:      absolute;
+  width:         14px;
+  height:        14px;
+  left:          3px;
+  top:           3px;
+  background:    #fff;
+  border-radius: 50%;
+  transition:    transform 0.2s;
+  box-shadow:    0 1px 3px rgba(0,0,0,0.2);
+}
+
+.ai-pet-sp-toggle-wrap input:checked + .ai-pet-sp-toggle-slider {
+  background: var(--sp-accent);
+}
+
+.ai-pet-sp-toggle-wrap input:checked + .ai-pet-sp-toggle-slider::before {
+  transform: translateX(16px);
+}
+
+/* ── 折叠按钮 ── */
+.ai-pet-sp-collapse-btn {
+  background:    none;
+  border:        1px solid var(--sp-border);
+  border-radius: var(--sp-radius-sm);
+  color:         var(--sp-text2);
+  font-size:     11px;
+  width:         24px;
+  height:        24px;
+  cursor:        pointer;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  transition:    background 0.15s, color 0.15s;
+  padding:       0;
+  flex-shrink:   0;
+}
+
+.ai-pet-sp-collapse-btn:hover {
+  background: var(--sp-btn-hover);
+  color:      var(--sp-text);
+}
+
+/* ============================================================
+   面板主体 & 折叠动画
+   ============================================================ */
+
+.ai-pet-sp-body {
+  padding:    12px 14px;
+  display:    flex;
+  flex-direction: column;
+  gap:        12px;
+  overflow:   hidden;
+  max-height: 1000px;
+  transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+  opacity:    1;
+}
+
+.ai-pet-sp-body.collapsed {
+  max-height: 0;
+  padding:    0 14px;
+  opacity:    0;
+}
+
+/* ============================================================
+   分区块
+   ============================================================ */
+
+.ai-pet-sp-section {
+  display:        flex;
+  flex-direction: column;
+  gap:            8px;
+  padding-bottom: 12px;
+  border-bottom:  1px solid var(--sp-border2);
+}
+
+.ai-pet-sp-section:last-child {
   border-bottom: none;
   padding-bottom: 0;
 }
 
-.aipet-settings-row-col {
+.ai-pet-sp-section-title {
+  font-size:   11px;
+  font-weight: 700;
+  color:       var(--sp-text2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   行布局
+   ============================================================ */
+
+.ai-pet-sp-row {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+}
+
+.ai-pet-sp-row-col {
   flex-direction: column;
-  align-items:    flex-start;
+  align-items:    stretch;
 }
 
-.aipet-settings-row-btns {
-  gap:            8px;
-  justify-content: flex-start;
-  border-bottom:  none;
-  padding-top:    8px;
+.ai-pet-sp-row-end {
+  justify-content: flex-end;
 }
 
-.aipet-settings-label {
-  font-size:  13px;
-  color:      var(--SmartThemeBodyColor, #cdd9e5);
-  flex:       1;
+.ai-pet-sp-label {
+  font-size:  12px;
+  color:      var(--sp-text2);
+  min-width:  72px;
+  flex-shrink: 0;
 }
 
-.aipet-settings-hint {
+/* ============================================================
+   表单控件
+   ============================================================ */
+
+.ai-pet-sp-input,
+.ai-pet-sp-select,
+.ai-pet-sp-textarea {
+  flex:          1;
+  padding:       6px 10px;
+  background:    var(--sp-input-bg);
+  border:        1.5px solid var(--sp-border);
+  border-radius: var(--sp-radius-sm);
+  color:         var(--sp-text);
+  font-size:     12px;
+  outline:       none;
+  transition:    border-color 0.15s, box-shadow 0.15s;
+  font-family:   inherit;
+}
+
+.ai-pet-sp-input:focus,
+.ai-pet-sp-select:focus,
+.ai-pet-sp-textarea:focus {
+  border-color: var(--sp-accent);
+  box-shadow:   0 0 0 3px var(--sp-accent-dim);
+}
+
+.ai-pet-sp-textarea {
+  resize:     vertical;
+  min-height: 60px;
+  line-height: 1.5;
+}
+
+.ai-pet-sp-select {
+  cursor: pointer;
+}
+
+/* ── 模型选择行 ── */
+.ai-pet-sp-model-wrap {
+  display: flex;
+  gap:     6px;
+  flex:    1;
+}
+
+.ai-pet-sp-model-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ============================================================
+   按钮
+   ============================================================ */
+
+.ai-pet-sp-btn {
+  padding:       6px 12px;
+  background:    var(--sp-btn-bg);
+  border:        1.5px solid var(--sp-border);
+  border-radius: var(--sp-radius-sm);
+  color:         var(--sp-btn-text);
+  font-size:     12px;
+  font-weight:   600;
+  cursor:        pointer;
+  transition:    background 0.15s, transform 0.1s;
+  white-space:   nowrap;
+  font-family:   inherit;
+}
+
+.ai-pet-sp-btn:hover:not(:disabled) {
+  background: var(--sp-btn-hover);
+}
+
+.ai-pet-sp-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.ai-pet-sp-btn:disabled {
+  opacity: 0.5;
+  cursor:  not-allowed;
+}
+
+.ai-pet-sp-btn-sm {
+  padding:       5px 10px;
+  background:    var(--sp-btn-bg);
+  border:        1.5px solid var(--sp-border);
+  border-radius: var(--sp-radius-sm);
+  color:         var(--sp-btn-text);
   font-size:     11px;
-  color:         rgba(255,255,255,0.35);
-  margin-bottom: 6px;
-  font-family:   'Courier New', monospace;
-  line-height:   1.5;
+  font-weight:   600;
+  cursor:        pointer;
+  transition:    background 0.15s;
+  white-space:   nowrap;
+  font-family:   inherit;
+  flex-shrink:   0;
 }
 
-/* ── 开关 ── */
-.aipet-settings-row input[type="checkbox"].aipet-toggle {
+.ai-pet-sp-btn-sm:hover:not(:disabled) {
+  background: var(--sp-btn-hover);
+}
+
+.ai-pet-sp-btn-sm:disabled {
+  opacity: 0.5;
+  cursor:  not-allowed;
+}
+
+.ai-pet-sp-btn-danger {
+  background:   var(--sp-danger-bg);
+  border-color: var(--sp-danger-text);
+  color:        var(--sp-danger-text);
+}
+
+.ai-pet-sp-btn-danger:hover:not(:disabled) {
+  background: var(--sp-danger-hover);
+}
+
+.ai-pet-sp-btn-group {
+  display: flex;
+  gap:     8px;
+  flex-wrap: wrap;
+}
+
+/* ============================================================
+   状态提示
+   ============================================================ */
+
+.ai-pet-sp-status-row {
+  min-height: 18px;
+}
+
+.ai-pet-sp-status {
+  font-size:  11px;
+  line-height: 1.4;
+  display:    block;
+}
+
+.ai-pet-sp-status:empty {
   display: none;
 }
 
-.aipet-toggle-track {
-  width:          36px;
-  height:         20px;
-  background:     rgba(255,255,255,0.12);
-  border-radius:  10px;
-  position:       relative;
-  cursor:         pointer;
-  transition:     background 0.2s ease;
-  flex-shrink:    0;
+.ai-pet-sp-status-loading {
+  color: var(--sp-loading);
 }
 
-.aipet-toggle-track::after {
-  content:        '';
-  position:       absolute;
-  width:          14px;
-  height:         14px;
-  background:     #fff;
-  border-radius:  50%;
-  top:            3px;
-  left:           3px;
-  transition:     transform 0.2s ease;
-  box-shadow:     0 1px 3px rgba(0,0,0,0.3);
+.ai-pet-sp-status-loading::before {
+  content:     '⏳ ';
 }
 
-.aipet-toggle:checked + .aipet-toggle-track {
-  background: #D97757;
+.ai-pet-sp-status-success {
+  color: var(--sp-success);
 }
 
-.aipet-toggle:checked + .aipet-toggle-track::after {
-  transform: translateX(16px);
+.ai-pet-sp-status-error {
+  color: var(--sp-error);
 }
 
-/* ── Select ── */
-.aipet-settings-select {
-  background:     rgba(255,255,255,0.06);
-  border:         1px solid rgba(255,255,255,0.12);
-  border-radius:  6px;
-  color:          var(--SmartThemeBodyColor, #cdd9e5);
-  font-size:      12px;
-  padding:        4px 8px;
-  cursor:         pointer;
-  outline:        none;
-  transition:     border-color 0.2s ease;
-  max-width:      160px;
+.ai-pet-sp-status-warn {
+  color: var(--sp-warn);
 }
 
-.aipet-settings-select:focus {
-  border-color: #D97757;
+/* ============================================================
+   提示文字 & code标签
+   ============================================================ */
+
+.ai-pet-sp-hint {
+  font-size:   11px;
+  color:       var(--sp-text3);
+  line-height: 1.5;
 }
 
-/* ── Textarea ── */
-.aipet-settings-textarea {
-  width:          100%;
-  background:     rgba(0,0,0,0.25);
-  border:         1px solid rgba(255,255,255,0.1);
-  border-radius:  6px;
-  color:          var(--SmartThemeBodyColor, #cdd9e5);
-  font-size:      12px;
-  font-family:    'Courier New', monospace;
-  padding:        8px;
-  resize:         vertical;
-  outline:        none;
-  transition:     border-color 0.2s ease;
-  box-sizing:     border-box;
-  line-height:    1.5;
+.ai-pet-sp-hint code {
+  background:    var(--sp-code-bg);
+  color:         var(--sp-accent);
+  padding:       1px 5px;
+  border-radius: 4px;
+  font-size:     10px;
+  font-family:   'Courier New', monospace;
 }
 
-.aipet-settings-textarea:focus {
-  border-color: #D97757;
+/* ============================================================
+   手机适配
+   ============================================================ */
+
+@media (max-width: 600px) {
+  .ai-pet-sp-wrap {
+    margin: 0 0 10px;
+    border-radius: var(--sp-radius-sm);
+  }
+
+  .ai-pet-sp-row {
+    flex-wrap: wrap;
+  }
+
+  .ai-pet-sp-label {
+    min-width: 60px;
+  }
+
+  .ai-pet-sp-model-wrap {
+    flex-direction: column;
+  }
+
+  .ai-pet-sp-btn-group {
+    flex-direction: column;
+  }
+
+  .ai-pet-sp-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
 
-/* ── 按钮 ── */
-.aipet-sp-btn {
-  padding:        6px 14px;
-  border-radius:  6px;
-  font-size:      12px;
-  font-weight:    600;
-  cursor:         pointer;
-  border:         none;
-  transition:     opacity 0.2s ease, transform 0.15s ease;
-  display:        inline-flex;
-  align-items:    center;
-  gap:            4px;
-}
-
-.aipet-sp-btn:hover  { opacity: 0.85; transform: translateY(-1px); }
-.aipet-sp-btn:active { transform: translateY(1px); }
-
-.aipet-sp-btn-primary {
-  background: #D97757;
-  color:      #fff;
-}
-
-.aipet-sp-btn-secondary {
-  background: rgba(255,255,255,0.08);
-  color:      var(--SmartThemeBodyColor, #cdd9e5);
-  border:     1px solid rgba(255,255,255,0.12);
-}
-
-.aipet-sp-btn-danger {
-  background: rgba(248,81,73,0.15);
-  color:      #f85149;
-  border:     1px solid rgba(248,81,73,0.3);
-}
-
-/* ── API状态 ── */
-.aipet-sp-api-status {
-  margin-top:  8px;
-  font-size:   12px;
-  font-family: 'Courier New', monospace;
-  min-height:  18px;
-  transition:  color 0.2s ease;
-}
-
-.aipet-status-loading { color: rgba(255,255,255,0.4); }
-.aipet-status-success { color: #3fb950; }
-.aipet-status-error   { color: #f85149; }
-
-/* ── 统计卡片 ── */
-.aipet-settings-stats-grid {
-  display:   grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap:       8px;
-}
-
-.aipet-stat-card {
-  background:    rgba(255,255,255,0.04);
-  border:        1px solid rgba(255,255,255,0.07);
-  border-radius: 8px;
-  padding:       10px 6px;
-  text-align:    center;
-}
-
-.aipet-stat-card-value {
-  font-size:   18px;
-  font-weight: 700;
-  color:       #D97757;
-  font-family: 'Courier New', monospace;
-  line-height: 1.2;
-}
-
-.aipet-stat-card-label {
-  font-size:  10px;
-  color:      rgba(255,255,255,0.35);
-  margin-top: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* ── 动画 ── */
-@keyframes aipet-fadein {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 
