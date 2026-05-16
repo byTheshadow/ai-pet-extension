@@ -2,39 +2,22 @@
 /* BLOCK START: 模块元信息与常量定义                              */
 /* ============================================================ */
 
-import {
-  extension_settings,
-  getContext,
-  saveSettingsDebounced,
-} from '../../../extensions.js';
-
-import {
-  eventSource,
-  event_types,
-} from '../../../../script.js';
-
 const AI_PET_NAME    = 'AI桌宠系统';
 const AI_PET_VERSION = '1.0.0-phase1';
-const AI_PET_EXT_PATH = '/scripts/extensions/third-party/ai-pet-extension';
-
-const BRANDS = {
-  claude:   { label: 'Claude',   color: '#E8845A', accent: '#F4A87C' },
-  gemini:   { label: 'Gemini',   color: '#8B7CF6', accent: '#A78BFA' },
-  deepseek: { label: 'DeepSeek', color: '#3B82F6', accent: '#60A5FA' },
-  gpt:      { label: 'GPT',      color: '#10B981', accent: '#34D399' },
-};
+const AI_PET_FOLDER  = 'ai-pet-extension';
+const EXTENSION_PATH = `/scripts/extensions/third-party/${AI_PET_FOLDER}`;
 
 const DEFAULT_SETTINGS = {
   settings: {
     enabled:         true,
-    mode:            'free',
+    mode:            'free',       // 'free' | 'api'
     apiKey:          '',
     apiBaseUrl:      'https://api.openai.com/v1',
     model:           '',
-    availableModels: [],
     messageTemplate: '{petName}这次和{charName}聊天消耗了{tokens}tk，用时{time}秒，第{floor}楼',
-    logLevel:        'verbose',
-    theme:           'pink',
+    logLevel:        'verbose',    // 'verbose' | 'error'
+    theme:           'pink',       // 'pink' | 'dark'
+    panelCollapsed:  false,
   },
   pets: {
     slot1: null,
@@ -52,37 +35,11 @@ const DEFAULT_SETTINGS = {
   },
 };
 
-const PET_TEMPLATE = {
-  id:        '',
-  brand:     'claude',
-  skin:      0,
-  name:      '',
-  birthday:  '',
-  stats: {
-    mood:        80,
-    hunger:      60,
-    energy:      90,
-    cleanliness: 70,
-    intimacy:    0,
-  },
-  personality: {
-    trait:      '',
-    catchphrase: '',
-    likes: { presets: [], custom: [] },
-  },
-  address: {
-    userNickname: '',
-    currentTitle: '主人',
-  },
-  memory:  [],
-  history: [],
-  diary:   [],
-  stats_meta: {
-    totalInteractions: 0,
-    createdAt:         '',
-    lastActiveAt:      '',
-    consecutiveDays:   0,
-  },
+const BRAND_CONFIG = {
+  claude:   { label: 'Claude',   color: '#DA7756', emoji: '🟠' },
+  gemini:   { label: 'Gemini',   color: '#8B5CF6', emoji: '🟣' },
+  deepseek: { label: 'DeepSeek', color: '#1E40AF', emoji: '🔵' },
+  gpt:      { label: 'GPT',      color: '#10A37F', emoji: '🟢' },
 };
 
 /* BLOCK END: 模块元信息与常量定义 */
@@ -91,101 +48,110 @@ const PET_TEMPLATE = {
 /* BLOCK START: 日志系统                                         */
 /* ============================================================ */
 
-const AIPetLog = {
+const AiPetLog = {
   _prefix: `[${AI_PET_NAME} v${AI_PET_VERSION}]`,
 
-  _shouldLog(level) {
-    const s = AIPetCore.getSettings();
-    if (!s) return true;
-    if (s.logLevel === 'error' && level !== 'error') return false;
-    return true;
+  info(module, ...args) {
+    const lvl = AiPetCore.getLogLevel();
+    if (lvl === 'verbose') {
+      console.log(`%c${this._prefix}[${module}]`, 'color:#c084fc;font-weight:bold', ...args);
+    }
   },
 
-  info(tag, ...args) {
-    if (!this._shouldLog('info')) return;
-    console.log(`%c${this._prefix}%c [${tag}]`, 'color:#E8845A;font-weight:bold', 'color:#888', ...args);
+  warn(module, ...args) {
+    console.warn(`${this._prefix}[${module}]`, ...args);
   },
 
-  warn(tag, ...args) {
-    if (!this._shouldLog('warn')) return;
-    console.warn(`${this._prefix} [${tag}]`, ...args);
+  error(module, ...args) {
+    console.error(`%c${this._prefix}[${module}] ❌`, 'color:#f87171;font-weight:bold', ...args);
   },
 
-  error(tag, ...args) {
-    console.error(`${this._prefix} [ERROR][${tag}]`, ...args);
-  },
-
-  debug(tag, ...args) {
-    if (!this._shouldLog('debug')) return;
-    console.debug(`${this._prefix} [${tag}]`, ...args);
+  success(module, ...args) {
+    const lvl = AiPetCore.getLogLevel();
+    if (lvl === 'verbose') {
+      console.log(`%c${this._prefix}[${module}] ✅`, 'color:#4ade80;font-weight:bold', ...args);
+    }
   },
 };
 
 /* BLOCK END: 日志系统 */
 
 /* ============================================================ */
-/* BLOCK START: 核心数据管理                                     */
+/* BLOCK START: 核心状态管理                                      */
 /* ============================================================ */
 
-const AIPetCore = {
-  _data: null,
+const AiPetCore = {
+  _settings: null,
 
+  // 获取日志级别（安全访问，初始化前也能用）
+  getLogLevel() {
+    return this._settings?.settings?.logLevel ?? 'verbose';
+  },
+
+  // 从 ST extensionSettings 加载，深度合并默认值
   load() {
     try {
-      if (!extension_settings['ai_pet_extension']) {
-        extension_settings['ai_pet_extension'] = {};
+      const stored = window.extension_settings?.ai_pet_extension;
+      if (stored) {
+        this._settings = this._deepMerge(
+          JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+          stored
+        );
+        AiPetLog.success('Core', '设置加载成功');
+      } else {
+        this._settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+        AiPetLog.info('Core', '未找到已存储设置，使用默认值');
       }
-      const raw = extension_settings['ai_pet_extension'];
-      this._data = this._deepMerge(
-        JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
-        raw
-      );
-      AIPetLog.info('Core', '数据加载成功');
     } catch (e) {
-      AIPetLog.error('Core', '数据加载失败，使用默认值', e);
-      this._data = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      AiPetLog.error('Core', '设置加载失败，使用默认值', e);
+      this._settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     }
   },
 
+  // 保存到 ST extensionSettings
   save() {
     try {
-      extension_settings['ai_pet_extension'] = this._data;
-      saveSettingsDebounced();
-      AIPetLog.debug('Core', '数据已保存');
+      if (!window.extension_settings) {
+        AiPetLog.error('Core', 'extension_settings 不存在，无法保存');
+        return;
+      }
+      window.extension_settings.ai_pet_extension = this._settings;
+      if (typeof window.saveSettingsDebounced === 'function') {
+        window.saveSettingsDebounced();
+        AiPetLog.info('Core', '设置已保存（debounced）');
+      } else {
+        AiPetLog.warn('Core', 'saveSettingsDebounced 不可用');
+      }
     } catch (e) {
-      AIPetLog.error('Core', '数据保存失败', e);
+      AiPetLog.error('Core', '设置保存失败', e);
     }
   },
 
-  getData()         { return this._data; },
-  getSettings()     { return this._data?.settings; },
-  getPets()         { return this._data?.pets; },
-  getRelationship() { return this._data?.relationship; },
-  getGlobalStats()  { return this._data?.globalStats; },
-
-  updateSettings(patch) {
-    Object.assign(this._data.settings, patch);
-    this.save();
+  get(path) {
+    return path.split('.').reduce((obj, key) => obj?.[key], this._settings);
   },
 
-  updatePet(slot, petData) {
-    this._data.pets[slot] = petData;
-    this.save();
+  set(path, value) {
+    const keys = path.split('.');
+    const last = keys.pop();
+    const target = keys.reduce((obj, key) => obj?.[key], this._settings);
+    if (target && last) {
+      target[last] = value;
+      this.save();
+    }
   },
 
-  updateGlobalStats(patch) {
-    Object.assign(this._data.globalStats, patch);
-    this.save();
-  },
-
+  // 深度合并（target被source覆盖，但target中source没有的key保留）
   _deepMerge(target, source) {
+    if (!source || typeof source !== 'object') return target;
     for (const key of Object.keys(source)) {
       if (
         source[key] !== null &&
         typeof source[key] === 'object' &&
-        !Array.isArray(source[key])
+        !Array.isArray(source[key]) &&
+        target[key] !== null &&
+        typeof target[key] === 'object'
       ) {
-        if (!target[key] || typeof target[key] !== 'object') target[key] = {};
         this._deepMerge(target[key], source[key]);
       } else {
         target[key] = source[key];
@@ -193,960 +159,921 @@ const AIPetCore = {
     }
     return target;
   },
-
-  generateId() {
-    return 'pet_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
-  },
-
-  createPet(brand, name, skin = 0) {
-    const pet = JSON.parse(JSON.stringify(PET_TEMPLATE));
-    pet.id       = this.generateId();
-    pet.brand    = brand;
-    pet.name     = name;
-    pet.skin     = skin;
-    pet.birthday = new Date().toISOString().slice(0, 10);
-    pet.stats_meta.createdAt    = pet.birthday;
-    pet.stats_meta.lastActiveAt = pet.birthday;
-    return pet;
-  },
 };
 
-/* BLOCK END: 核心数据管理 */
+/* BLOCK END: 核心状态管理 */
 
 /* ============================================================ */
-/* BLOCK START: ST事件监听与消息处理                              */
+/* BLOCK START: UI工具函数                                        */
 /* ============================================================ */
 
-const AIPetEvents = {
-  _lastMessageTime: null,
+const AiPetUI = {
 
-  init() {
-    eventSource.on(event_types.MESSAGE_RECEIVED, (idx) => {
-      this._onMessageReceived(idx);
+    // 显示Toast提示
+  toast(message, type = 'info', duration = 3000) {
+    const existing = document.getElementById('ai-pet-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'ai-pet-toast';
+    toast.className = `ai-pet-toast ai-pet-toast--${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // 触发动画
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => toast.classList.add('ai-pet-toast--show'));
     });
 
-    eventSource.on(event_types.MESSAGE_SENT, () => {
-      this._lastMessageTime = Date.now();
-      AIPetLog.debug('Events', '消息已发送，开始计时');
-    });
-
-    AIPetLog.info('Events', 'ST事件监听已注册');
+    setTimeout(() => {
+      toast.classList.remove('ai-pet-toast--show');
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
   },
 
-  _onMessageReceived(messageIndex) {
-    const settings = AIPetCore.getSettings();
-    if (!settings?.enabled) return;
-
-    try {
-      const ctx     = getContext();
-      const message = ctx.chat[messageIndex];
-      if (!message) return;
-
-      const responseTime = this._lastMessageTime
-        ? ((Date.now() - this._lastMessageTime) / 1000).toFixed(1)
-        : '?';
-      this._lastMessageTime = null;
-
-      const tokens = message.extra?.token_count
-        || Math.ceil((message.mes || '').length / 3);
-
-      const gs = AIPetCore.getGlobalStats();
-      AIPetCore.updateGlobalStats({
-        totalTokens:       gs.totalTokens + tokens,
-        totalMessages:     gs.totalMessages + 1,
-        totalResponseTime: gs.totalResponseTime + parseFloat(responseTime) || 0,
-        sessionTokens:     gs.sessionTokens + tokens,
-      });
-
-      AIPetLog.info('Events', `消息#${messageIndex} | tokens:${tokens} | 响应:${responseTime}s`);
-
-      AIPetUI.injectMessageButton(messageIndex, {
-        tokens,
-        responseTime,
-        floor:    messageIndex + 1,
-        charName: message.name || ctx.characters?.[ctx.characterId]?.name || 'AI',
-      });
-
-      AIPetPetManager.onMessageReceived(tokens);
-
-    } catch (e) {
-      AIPetLog.error('Events', '消息处理失败', e);
+  // 显示加载状态到某个按钮
+  setButtonLoading(btn, loading, originalText = '') {
+    if (!btn) return;
+    if (loading) {
+      btn.disabled = true;
+      btn.dataset.originalText = btn.textContent;
+      btn.textContent = '⏳ 处理中...';
+    } else {
+      btn.disabled = false;
+      btn.textContent = originalText || btn.dataset.originalText || '确认';
     }
+  },
+
+  // 在指定容器内显示加载占位
+  showLoading(container, message = '加载中...') {
+    if (!container) return;
+    container.innerHTML = `
+      <div class="ai-pet-loading">
+        <div class="ai-pet-loading__spinner"></div>
+        <span>${message}</span>
+      </div>
+    `;
+  },
+
+  // 在指定容器内显示错误
+  showError(container, message) {
+    if (!container) return;
+    container.innerHTML = `
+      <div class="ai-pet-error">
+        <span class="ai-pet-error__icon">❌</span>
+        <span>${message}</span>
+      </div>
+    `;
+  },
+
+  // 在指定容器内显示成功
+  showSuccess(container, message) {
+    if (!container) return;
+    container.innerHTML = `
+      <div class="ai-pet-success">
+        <span class="ai-pet-success__icon">✅</span>
+        <span>${message}</span>
+      </div>
+    `;
   },
 };
 
-/* BLOCK END: ST事件监听与消息处理 */
+/* BLOCK END: UI工具函数 */
 
 /* ============================================================ */
-/* BLOCK START: 桌宠管理器                                       */
+/* BLOCK START: 悬浮窗模块                                        */
 /* ============================================================ */
 
-const AIPetPetManager = {
-  onMessageReceived(tokens) {
-    const pets = AIPetCore.getPets();
-    let changed = false;
+const AiPetFloating = {
+  _el: null,
+  _isDragging: false,
+  _dragOffsetX: 0,
+  _dragOffsetY: 0,
 
-    for (const slot of ['slot1', 'slot2']) {
-      const pet = pets[slot];
-      if (!pet) continue;
-      pet.stats.intimacy    += 1;
-      pet.stats.energy       = Math.max(0, pet.stats.energy - 2);
-      pet.stats.mood         = Math.min(100, pet.stats.mood + 1);
-      pet.stats_meta.lastActiveAt      = new Date().toISOString().slice(0, 10);
-      pet.stats_meta.totalInteractions += 1;
-      changed = true;
-    }
-
-    if (changed) {
-      AIPetCore.save();
-      AIPetLog.debug('PetManager', '桌宠状态已更新');
-    }
-  },
-
-  naturalDecay() {
-    const pets = AIPetCore.getPets();
-    let changed = false;
-
-    for (const slot of ['slot1', 'slot2']) {
-      const pet = pets[slot];
-      if (!pet) continue;
-      pet.stats.hunger      = Math.max(0, pet.stats.hunger - 1);
-      pet.stats.cleanliness = Math.max(0, pet.stats.cleanliness - 0.5);
-      pet.stats.energy      = Math.min(100, pet.stats.energy + 0.5);
-      changed = true;
-    }
-
-    if (changed) {
-      AIPetCore.save();
-      AIPetLog.debug('PetManager', '属性自然衰减已执行');
-    }
-  },
-
-  getTitleByIntimacy(intimacy) {
-    if (intimacy < 10)  return '主人';
-    if (intimacy < 30)  return '亲爱的主人';
-    if (intimacy < 60)  return '我的主人';
-    if (intimacy < 100) return '最重要的人';
-    return '永远的伴侣';
-  },
-};
-
-/* BLOCK END: 桌宠管理器 */
-
-/* ============================================================ */
-/* BLOCK START: UI系统 - 悬浮窗与消息注入                        */
-/* ============================================================ */
-
-const AIPetUI = {
-  _floatVisible:   false,
-  _currentMsgData: null,
-  _selectedBrand:  null,
-  _toastTimer:     null,
-
-  init() {
-    this._createFloatWindow();
-    this._bindEvents();
-    AIPetLog.info('UI', '悬浮窗UI已初始化');
-  },
-
-  /* ── 消息emoji按钮注入 ── */
-  injectMessageButton(messageIndex, msgData) {
-    // ST消息DOM选择器兼容多版本
-    const msgEl = document.querySelector(
-      `.mes[mesid="${messageIndex}"]`
-    ) || document.querySelector(
-      `[mesid="${messageIndex}"]`
-    );
-
-    if (!msgEl) {
-      AIPetLog.warn('UI', `找不到消息DOM #${messageIndex}`);
+  // 创建悬浮窗DOM
+  create() {
+    if (document.getElementById('ai-pet-floating')) {
+      AiPetLog.info('Floating', '悬浮窗已存在，跳过创建');
       return;
     }
 
-    if (msgEl.querySelector('.ai-pet-msg-btn')) return;
+    const el = document.createElement('div');
+    el.id = 'ai-pet-floating';
+    el.className = 'ai-pet-floating';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'AI桌宠面板');
+    el.innerHTML = this._buildHTML();
+    document.body.appendChild(el);
+    this._el = el;
 
-    const btn = document.createElement('button');
-    btn.className        = 'ai-pet-msg-btn';
-    btn.textContent      = '🐾';
-    btn.title            = '打开AI桌宠';
-    btn.dataset.msgIndex = messageIndex;
-    btn.dataset.msgData  = JSON.stringify(msgData);
+    this._bindDrag();
+    this._bindClose();
+    this._bindTabSwitch();
 
-    // ST消息按钮区域，兼容多版本
-    const actionsEl = msgEl.querySelector('.mes_buttons')
-      || msgEl.querySelector('.extraMesButtons')
-      || msgEl.querySelector('.mes_block');
-
-    if (actionsEl) {
-      actionsEl.appendChild(btn);
-    } else {
-      msgEl.appendChild(btn);
-    }
-
-    AIPetLog.debug('UI', `🐾 已注入消息 #${messageIndex}`);
+    AiPetLog.success('Floating', '悬浮窗创建完成');
   },
 
-  /* ── 悬浮窗创建 ── */
-  _createFloatWindow() {
-    if (document.getElementById('ai-pet-float')) return;
-
-    const theme = AIPetCore.getSettings()?.theme || 'pink';
-    const win   = document.createElement('div');
-    win.id        = 'ai-pet-float';
-    win.className = `ai-pet-float theme-${theme}`;
-    win.innerHTML = this._getFloatHTML();
-    document.body.appendChild(win);
-
-    AIPetLog.debug('UI', '悬浮窗DOM已创建');
-  },
-
-  _getFloatHTML() {
+  _buildHTML() {
     return `
-      <div class="pet-device">
-        <div class="pet-device-header">
-          <div class="pet-device-drag-handle" id="ai-pet-drag-handle">
-            <span class="pet-device-title">AI桌宠</span>
-            <div class="pet-device-controls">
-              <button class="pet-ctrl-btn" id="ai-pet-theme-toggle" title="切换主题">🎨</button>
-              <button class="pet-ctrl-btn" id="ai-pet-close" title="关闭">✕</button>
+      <div class="ai-pet-floating__header" id="ai-pet-drag-handle">
+        <span class="ai-pet-floating__title">🐾 AI桌宠</span>
+        <div class="ai-pet-floating__header-actions">
+          <button class="ai-pet-floating__theme-btn" id="ai-pet-theme-toggle" title="切换主题" aria-label="切换主题">🎨</button>
+          <button class="ai-pet-floating__close" id="ai-pet-floating-close" title="关闭" aria-label="关闭面板">✕</button>
+        </div>
+      </div>
+
+      <div class="ai-pet-floating__tabs" role="tablist">
+        <button class="ai-pet-tab active" data-tab="pets" role="tab" aria-selected="true">桌宠</button>
+        <button class="ai-pet-tab" data-tab="stats" role="tab" aria-selected="false">统计</button>
+        <button class="ai-pet-tab" data-tab="relation" role="tab" aria-selected="false">关系</button>
+      </div>
+
+      <div class="ai-pet-floating__body">
+        <!-- Tab: 桌宠 -->
+        <div class="ai-pet-tab-panel active" data-panel="pets">
+          <div class="ai-pet-slots">
+            <div class="ai-pet-slot" data-slot="slot1" id="ai-pet-slot1">
+              ${this._buildSlotHTML('slot1')}
+            </div>
+            <div class="ai-pet-slot" data-slot="slot2" id="ai-pet-slot2">
+              ${this._buildSlotHTML('slot2')}
             </div>
           </div>
         </div>
 
-        <div class="pet-screen">
-          <!-- 空状态页 -->
-          <div class="pet-page" id="pet-page-empty">
-            <div class="pet-empty-state">
-              <div class="pet-empty-icon">🥚</div>
-              <p class="pet-empty-text">还没有桌宠</p>
-              <button class="pet-btn-primary" id="pet-btn-add-first">领养第一只</button>
-            </div>
+        <!-- Tab: 统计 -->
+        <div class="ai-pet-tab-panel" data-panel="stats">
+          <div class="ai-pet-stats-panel" id="ai-pet-stats-panel">
+            ${this._buildStatsHTML()}
           </div>
-
-          <!-- 主界面 -->
-          <div class="pet-page hidden" id="pet-page-main">
-            <div class="pet-display-area">
-              <div class="pet-slot" id="pet-slot-1">
-                <div class="pet-avatar-wrap">
-                  <div class="pet-avatar placeholder" id="pet-avatar-1">
-                    ${this._placeholderSVG()}
-                  </div>
-                  <div class="pet-bubble hidden" id="pet-bubble-1"></div>
-                </div>
-                <div class="pet-name" id="pet-name-1">空槽</div>
-                <div class="pet-brand-badge" id="pet-brand-1">点击领养</div>
-              </div>
-
-              <div class="pet-slot-divider" id="pet-slot-divider" style="display:none">
-                <span class="pet-relation-heart">💕</span>
-                <span class="pet-relation-val" id="pet-relation-val">0</span>
-              </div>
-
-              <div class="pet-slot" id="pet-slot-2">
-                <div class="pet-avatar-wrap">
-                  <div class="pet-avatar placeholder" id="pet-avatar-2">
-                    ${this._placeholderSVG()}
-                  </div>
-                  <div class="pet-bubble hidden" id="pet-bubble-2"></div>
-                </div>
-                <div class="pet-name" id="pet-name-2">空槽</div>
-                <div class="pet-brand-badge" id="pet-brand-2">点击领养</div>
-              </div>
-            </div>
-
-            <div class="pet-msg-panel" id="pet-msg-panel">
-              <div class="pet-msg-panel-title">📊 本次对话</div>
-              <div class="pet-msg-info" id="pet-msg-info">
-                <span class="pet-msg-info-item">等待消息...</span>
-              </div>
-            </div>
-
-            <div class="pet-stats-bar">
-              <div class="pet-stat-item">
-                <span class="pet-stat-label">总Token</span>
-                <span class="pet-stat-val" id="pet-stat-total-tokens">0</span>
-              </div>
-              <div class="pet-stat-item">
-                <span class="pet-stat-label">消息数</span>
-                <span class="pet-stat-val" id="pet-stat-total-msgs">0</span>
-              </div>
-              <div class="pet-stat-item">
-                <span class="pet-stat-label">平均响应</span>
-                <span class="pet-stat-val" id="pet-stat-avg-time">-</span>
-              </div>
-            </div>
-
-            <div class="pet-action-bar">
-              <button class="pet-action-btn" id="pet-btn-detail-1" title="桌宠1详情">🐾</button>
-              <button class="pet-action-btn" id="pet-btn-add-pet" title="添加桌宠">➕</button>
-              <button class="pet-action-btn" id="pet-btn-detail-2" title="桌宠2详情">🐾</button>
-            </div>
-          </div>
-
-          <!-- 详情页 -->
-          <div class="pet-page hidden" id="pet-page-detail">
-            <div class="pet-detail-header">
-              <button class="pet-back-btn" id="pet-detail-back">← 返回</button>
-              <span class="pet-detail-title" id="pet-detail-title">桌宠详情</span>
-            </div>
-            <div class="pet-detail-avatar-wrap">
-              <div class="pet-avatar large placeholder" id="pet-detail-avatar">
-                ${this._placeholderSVG()}
-              </div>
-            </div>
-            <div class="pet-detail-stats" id="pet-detail-stats"></div>
-          </div>
-
-          <!-- 创建页 -->
-          <div class="pet-page hidden" id="pet-page-create">
-            <div class="pet-detail-header">
-              <button class="pet-back-btn" id="pet-create-back">← 返回</button>
-              <span class="pet-detail-title">领养桌宠</span>
-            </div>
-            <div class="pet-create-content">
-              <p class="pet-create-hint">选择品牌</p>
-              <div class="pet-brand-grid" id="pet-brand-grid"></div>
-              <div class="pet-create-form hidden" id="pet-create-form">
-                <input class="pet-input" id="pet-create-name" type="text"
-                  placeholder="给它取个名字..." maxlength="12"/>
-                <div class="pet-skin-select">
-                  <span class="pet-create-hint">选择皮肤</span>
-                  <div class="pet-skin-options">
-                    <div class="pet-skin-opt selected" data-skin="0">皮肤 A</div>
-                    <div class="pet-skin-opt" data-skin="1">皮肤 B</div>
-                  </div>
-                </div>
-                <button class="pet-btn-primary" id="pet-create-confirm">
-                  <span id="pet-create-confirm-text">确认领养</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 加载遮罩 -->
-          <div class="pet-loading-mask hidden" id="pet-loading-mask">
-            <div class="pet-loading-spinner"></div>
-            <span class="pet-loading-text" id="pet-loading-text">处理中...</span>
-          </div>
-
-          <!-- Toast -->
-          <div class="pet-toast hidden" id="pet-toast"></div>
         </div>
 
-        <div class="pet-device-footer">
-          <button class="pet-hw-btn" id="pet-hw-left">◀</button>
-          <button class="pet-hw-btn pet-hw-center" id="pet-hw-center">●</button>
-          <button class="pet-hw-btn" id="pet-hw-right">▶</button>
+        <!-- Tab: 关系 -->
+        <div class="ai-pet-tab-panel" data-panel="relation">
+          <div class="ai-pet-relation-panel" id="ai-pet-relation-panel">
+            ${this._buildRelationHTML()}
+          </div>
         </div>
       </div>
     `;
   },
 
-  _placeholderSVG() {
-    return `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="40" cy="35" r="22" fill="currentColor" opacity="0.2"/>
-      <circle cx="40" cy="35" r="15" fill="currentColor" opacity="0.35"/>
-      <text x="40" y="41" text-anchor="middle" font-size="16">🤖</text>
-    </svg>`;
-  },
-
-  /* ── 事件绑定 ── */
-  _bindEvents() {
-    $(document).on('click', '.ai-pet-msg-btn', (e) => {
-      const msgData = JSON.parse(e.currentTarget.dataset.msgData || '{}');
-      this._currentMsgData = msgData;
-      this.openFloat(msgData);
-    });
-
-    $(document).on('click', '#ai-pet-close',        () => this.closeFloat());
-    $(document).on('click', '#ai-pet-theme-toggle', () => this.toggleTheme());
-
-    $(document).on('click', '#pet-btn-add-first, #pet-btn-add-pet', () => {
-      this.showPage('pet-page-create');
-      this._renderBrandGrid();
-    });
-
-    $(document).on('click', '.pet-brand-card', (e) => {
-      this._selectBrand(e.currentTarget.dataset.brand);
-    });
-
-    $(document).on('click', '.pet-skin-opt', (e) => {
-      document.querySelectorAll('.pet-skin-opt').forEach(o => o.classList.remove('selected'));
-      e.currentTarget.classList.add('selected');
-    });
-
-    $(document).on('click', '#pet-create-confirm', () => this._confirmCreate());
-
-    $(document).on('click', '#pet-detail-back, #pet-create-back', () => {
-      this.showPage('pet-page-main');
-      this._renderMainPage();
-    });
-
-    $(document).on('click', '#pet-btn-detail-1', () => this._showPetDetail('slot1'));
-    $(document).on('click', '#pet-btn-detail-2', () => this._showPetDetail('slot2'));
-
-    this._initDrag();
-    AIPetLog.debug('UI', '事件委托已绑定');
-  },
-
-  showPage(pageId) {
-    document.querySelectorAll('.pet-page').forEach(p => p.classList.add('hidden'));
-    const target = document.getElementById(pageId);
-    if (target) target.classList.remove('hidden');
-  },
-
-  openFloat(msgData) {
-    const win = document.getElementById('ai-pet-float');
-    if (!win) return;
-    win.classList.add('visible');
-    this._floatVisible = true;
-
-    if (msgData) this._updateMsgPanel(msgData);
-
-    const pets = AIPetCore.getPets();
-    if (pets.slot1 || pets.slot2) {
-      this.showPage('pet-page-main');
-      this._renderMainPage();
-    } else {
-      this.showPage('pet-page-empty');
-    }
-    AIPetLog.info('UI', '悬浮窗已打开');
-  },
-
-  closeFloat() {
-    const win = document.getElementById('ai-pet-float');
-    if (!win) return;
-    win.classList.remove('visible');
-    this._floatVisible = false;
-  },
-
-  _renderMainPage() {
-    const pets = AIPetCore.getPets();
-    const gs   = AIPetCore.getGlobalStats();
-
-    for (const [slot, idx] of [['slot1', 1], ['slot2', 2]]) {
-      const pet     = pets[slot];
-      const nameEl  = document.getElementById(`pet-name-${idx}`);
-      const brandEl = document.getElementById(`pet-brand-${idx}`);
-      const avatarEl = document.getElementById(`pet-avatar-${idx}`);
-
-      if (pet) {
-        if (nameEl)   nameEl.textContent  = pet.name;
-        if (brandEl) {
-          brandEl.textContent = BRANDS[pet.brand]?.label || pet.brand;
-          brandEl.style.color = BRANDS[pet.brand]?.color || '#888';
-        }
-        if (avatarEl) avatarEl.style.color = BRANDS[pet.brand]?.color || '#888';
-      } else {
-        if (nameEl)   nameEl.textContent  = '空槽';
-        if (brandEl) {
-          brandEl.textContent = '点击领养';
-          brandEl.style.color = '';
-        }
-      }
-    }
-
-    const avgTime = gs.totalMessages > 0
-      ? (gs.totalResponseTime / gs.totalMessages).toFixed(1) + 's'
-      : '-';
-
-    const el = (id) => document.getElementById(id);
-    if (el('pet-stat-total-tokens')) el('pet-stat-total-tokens').textContent = gs.totalTokens.toLocaleString();
-    if (el('pet-stat-total-msgs'))   el('pet-stat-total-msgs').textContent   = gs.totalMessages;
-    if (el('pet-stat-avg-time'))     el('pet-stat-avg-time').textContent     = avgTime;
-
-    const relVal  = el('pet-relation-val');
-    const divider = el('pet-slot-divider');
-    if (relVal)  relVal.textContent    = AIPetCore.getRelationship().affection;
-    if (divider) divider.style.display = (pets.slot1 && pets.slot2) ? 'flex' : 'none';
-  },
-
-  _updateMsgPanel(msgData) {
-    const settings = AIPetCore.getSettings();
-    const pets     = AIPetCore.getPets();
-    const pet      = pets.slot1 || pets.slot2;
-
-    const text = settings.messageTemplate
-      .replace('{petName}',  pet?.name          || '桌宠')
-      .replace('{charName}', msgData.charName   || 'AI')
-      .replace('{tokens}',   msgData.tokens     || '?')
-      .replace('{time}',     msgData.responseTime || '?')
-      .replace('{floor}',    msgData.floor      || '?');
-
-    const infoEl = document.getElementById('pet-msg-info');
-    if (infoEl) infoEl.innerHTML = `<span class="pet-msg-info-item">${text}</span>`;
-  },
-
-  _renderBrandGrid() {
-    const grid = document.getElementById('pet-brand-grid');
-    if (!grid) return;
-    grid.innerHTML = Object.entries(BRANDS).map(([key, brand]) => `
-      <div class="pet-brand-card" data-brand="${key}" style="--brand-color:${brand.color}">
-        <div class="pet-brand-avatar">
-          <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="30" cy="30" r="25" fill="${brand.color}" opacity="0.2"/>
-            <circle cx="30" cy="30" r="18" fill="${brand.color}" opacity="0.4"/>
-            <text x="30" y="36" text-anchor="middle" font-size="16">${this._getBrandEmoji(key)}</text>
-          </svg>
-        </div>
-        <span class="pet-brand-label">${brand.label}</span>
-      </div>
-    `).join('');
-  },
-
-  _getBrandEmoji(brand) {
-    return { claude: '🟠', gemini: '💜', deepseek: '🔵', gpt: '🟢' }[brand] || '🤖';
-  },
-
-  _selectBrand(brand) {
-    document.querySelectorAll('.pet-brand-card').forEach(c => c.classList.remove('selected'));
-    const card = document.querySelector(`.pet-brand-card[data-brand="${brand}"]`);
-    if (card) card.classList.add('selected');
-    document.getElementById('pet-create-form')?.classList.remove('hidden');
-    this._selectedBrand = brand;
-  },
-
-  _confirmCreate() {
-    const brand     = this._selectedBrand;
-    const nameInput = document.getElementById('pet-create-name');
-    const name      = nameInput?.value?.trim();
-    const skin      = parseInt(
-      document.querySelector('.pet-skin-opt.selected')?.dataset.skin || '0'
-    );
-
-        if (!brand) { this.showToast('请先选择品牌', 'warn'); return; }
-    if (!name)  { this.showToast('请给桌宠取个名字', 'warn'); nameInput?.focus(); return; }
-
-    const pets = AIPetCore.getPets();
-    const slot = !pets.slot1 ? 'slot1' : !pets.slot2 ? 'slot2' : null;
-    if (!slot) { this.showToast('槽位已满，最多养两只', 'warn'); return; }
-
-    const confirmBtn  = document.getElementById('pet-create-confirm');
-    const confirmText = document.getElementById('pet-create-confirm-text');
-    if (confirmBtn)  confirmBtn.disabled = true;
-    if (confirmText) confirmText.textContent = '领养中...';
-
-    try {
-      const newPet = AIPetCore.createPet(brand, name, skin);
-      AIPetCore.updatePet(slot, newPet);
-      AIPetLog.info('UI', `新桌宠已创建: ${name} (${brand}) → ${slot}`);
-      this.showToast(`${name} 已成功领养！`, 'success');
-      setTimeout(() => {
-        this.showPage('pet-page-main');
-        this._renderMainPage();
-      }, 800);
-    } catch (e) {
-      AIPetLog.error('UI', '创建桌宠失败', e);
-      this.showToast('领养失败，请重试', 'error');
-      if (confirmBtn)  confirmBtn.disabled = false;
-      if (confirmText) confirmText.textContent = '确认领养';
-    }
-  },
-
-  _showPetDetail(slot) {
-    const pet = AIPetCore.getPets()[slot];
-    if (!pet) { this.showToast('该槽位还没有桌宠', 'warn'); return; }
-
-    const el = (id) => document.getElementById(id);
-    if (el('pet-detail-title'))  el('pet-detail-title').textContent = pet.name;
-    if (el('pet-detail-avatar')) el('pet-detail-avatar').style.color = BRANDS[pet.brand]?.color || '#888';
-
-    const statsEl = el('pet-detail-stats');
-    if (statsEl) {
-      statsEl.innerHTML = `
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">品牌</span>
-          <span class="pet-detail-val" style="color:${BRANDS[pet.brand]?.color}">${BRANDS[pet.brand]?.label}</span>
-        </div>
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">生日</span>
-          <span class="pet-detail-val">${pet.birthday}</span>
-        </div>
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">亲密度</span>
-          <span class="pet-detail-val">${pet.stats.intimacy}</span>
-        </div>
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">称呼你为</span>
-          <span class="pet-detail-val">${AIPetPetManager.getTitleByIntimacy(pet.stats.intimacy)}</span>
-        </div>
-        <div class="pet-detail-section-title">属性</div>
-        ${this._renderStatBar('心情',   pet.stats.mood)}
-        ${this._renderStatBar('饥饿',   pet.stats.hunger)}
-        ${this._renderStatBar('精力',   pet.stats.energy)}
-        ${this._renderStatBar('清洁',   pet.stats.cleanliness)}
-        <div class="pet-detail-section-title">统计</div>
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">互动次数</span>
-          <span class="pet-detail-val">${pet.stats_meta.totalInteractions}</span>
-        </div>
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">创建于</span>
-          <span class="pet-detail-val">${pet.stats_meta.createdAt}</span>
-        </div>
-        <div class="pet-detail-info-row">
-          <span class="pet-detail-label">最后活跃</span>
-          <span class="pet-detail-val">${pet.stats_meta.lastActiveAt}</span>
+  _buildSlotHTML(slotKey) {
+    const pet = AiPetCore.get(`pets.${slotKey}`);
+    if (!pet) {
+      return `
+        <div class="ai-pet-slot__empty">
+          <div class="ai-pet-slot__empty-icon">➕</div>
+          <div class="ai-pet-slot__empty-text">点击领养桌宠</div>
         </div>
       `;
     }
-    this.showPage('pet-page-detail');
-  },
-
-  _renderStatBar(label, value) {
-    const pct   = Math.max(0, Math.min(100, value));
-    const color = pct > 60 ? '#4ade80' : pct > 30 ? '#facc15' : '#f87171';
+    const brand = BRAND_CONFIG[pet.brand] || BRAND_CONFIG.claude;
     return `
-      <div class="pet-stat-bar-row">
-        <span class="pet-stat-bar-label">${label}</span>
-        <div class="pet-stat-bar-track">
-          <div class="pet-stat-bar-fill" style="width:${pct}%;background:${color}"></div>
+      <div class="ai-pet-slot__pet" data-slot="${slotKey}">
+        <div class="ai-pet-avatar" style="--pet-color:${brand.color}">
+          <div class="ai-pet-avatar__img-wrap">
+            <img class="ai-pet-avatar__img" src="${pet.avatarUrl || ''}" alt="${pet.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+            <div class="ai-pet-avatar__placeholder" style="display:none">${brand.emoji}</div>
+          </div>
+          <div class="ai-pet-avatar__brand-badge">${brand.label}</div>
         </div>
-        <span class="pet-stat-bar-num">${Math.round(pct)}</span>
+        <div class="ai-pet-slot__info">
+          <div class="ai-pet-slot__name">${pet.name}</div>
+          <div class="ai-pet-slot__mood">${this._getMoodEmoji(pet.stats?.mood ?? 80)}</div>
+        </div>
+        <div class="ai-pet-slot__bars">
+          ${this._buildStatBar('心情', pet.stats?.mood ?? 80, '😊')}
+          ${this._buildStatBar('饥饿', pet.stats?.hunger ?? 60, '🍖')}
+          ${this._buildStatBar('精力', pet.stats?.energy ?? 90, '⚡')}
+          ${this._buildStatBar('清洁', pet.stats?.cleanliness ?? 70, '🛁')}
+        </div>
+        <div class="ai-pet-slot__actions">
+          <button class="ai-pet-btn ai-pet-btn--sm" data-action="manage" data-slot="${slotKey}">管理</button>
+          <button class="ai-pet-btn ai-pet-btn--sm ai-pet-btn--danger" data-action="release" data-slot="${slotKey}">放生</button>
+        </div>
       </div>
     `;
   },
 
-  showToast(msg, type = 'info') {
-    const toast = document.getElementById('pet-toast');
-    if (!toast) return;
-    const icons = { success: '✅', warn: '⚠️', error: '❌', info: 'ℹ️' };
-    toast.textContent = `${icons[type] || ''} ${msg}`;
-    toast.className   = `pet-toast pet-toast-${type}`;
-    toast.classList.remove('hidden');
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => toast.classList.add('hidden'), 2500);
+  _buildStatBar(label, value, icon) {
+    const pct = Math.max(0, Math.min(100, value));
+    const colorClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low';
+    return `
+      <div class="ai-pet-bar">
+        <span class="ai-pet-bar__icon" title="${label}">${icon}</span>
+        <div class="ai-pet-bar__track">
+          <div class="ai-pet-bar__fill ai-pet-bar__fill--${colorClass}" style="width:${pct}%"></div>
+        </div>
+        <span class="ai-pet-bar__val">${pct}</span>
+      </div>
+    `;
   },
 
-  toggleTheme() {
-    const settings  = AIPetCore.getSettings();
-    const newTheme  = settings.theme === 'pink' ? 'dark' : 'pink';
-    AIPetCore.updateSettings({ theme: newTheme });
-    const win = document.getElementById('ai-pet-float');
-    if (win) {
-      win.classList.remove('theme-pink', 'theme-dark');
-      win.classList.add(`theme-${newTheme}`);
+  _buildStatsHTML() {
+    const gs = AiPetCore.get('globalStats') || {};
+    const avgTime = gs.totalMessages > 0
+      ? (gs.totalResponseTime / gs.totalMessages).toFixed(1)
+      : '0.0';
+    return `
+      <div class="ai-pet-stats-grid">
+        <div class="ai-pet-stat-card">
+          <div class="ai-pet-stat-card__val">${gs.totalTokens ?? 0}</div>
+          <div class="ai-pet-stat-card__label">累计Token</div>
+        </div>
+        <div class="ai-pet-stat-card">
+          <div class="ai-pet-stat-card__val">${gs.totalMessages ?? 0}</div>
+          <div class="ai-pet-stat-card__label">总消息数</div>
+        </div>
+        <div class="ai-pet-stat-card">
+          <div class="ai-pet-stat-card__val">${avgTime}s</div>
+          <div class="ai-pet-stat-card__label">平均响应</div>
+        </div>
+        <div class="ai-pet-stat-card">
+          <div class="ai-pet-stat-card__val">${gs.sessionTokens ?? 0}</div>
+          <div class="ai-pet-stat-card__label">本次会话</div>
+        </div>
+      </div>
+      <div class="ai-pet-last-msg" id="ai-pet-last-msg">
+        <div class="ai-pet-last-msg__label">最近一条消息</div>
+        <div class="ai-pet-last-msg__content" id="ai-pet-last-msg-content">暂无数据</div>
+      </div>
+    `;
+  },
+
+  _buildRelationHTML() {
+    const rel = AiPetCore.get('relationship') || {};
+    const affection = rel.affection ?? 0;
+    const pet1 = AiPetCore.get('pets.slot1');
+    const pet2 = AiPetCore.get('pets.slot2');
+
+    if (!pet1 || !pet2) {
+      return `<div class="ai-pet-empty-hint">需要两只桌宠才能查看关系 🐾</div>`;
     }
-    AIPetLog.info('UI', `主题切换为: ${newTheme}`);
+
+    return `
+      <div class="ai-pet-relation">
+        <div class="ai-pet-relation__names">
+          <span>${pet1.name}</span>
+          <span class="ai-pet-relation__heart">💕</span>
+          <span>${pet2.name}</span>
+        </div>
+        <div class="ai-pet-relation__bar-wrap">
+          <div class="ai-pet-bar">
+            <span class="ai-pet-bar__icon">💖</span>
+            <div class="ai-pet-bar__track">
+              <div class="ai-pet-bar__fill ai-pet-bar__fill--high"
+                   style="width:${Math.min(100, affection / 10)}%"></div>
+            </div>
+            <span class="ai-pet-bar__val">${affection}</span>
+          </div>
+        </div>
+        <div class="ai-pet-relation__events" id="ai-pet-relation-events">
+          ${(rel.events || []).length === 0
+            ? '<div class="ai-pet-empty-hint">还没有羁绊事件</div>'
+            : (rel.events || []).slice(-3).map(e =>
+                `<div class="ai-pet-relation__event">${e}</div>`
+              ).join('')
+          }
+        </div>
+      </div>
+    `;
   },
 
-  _initDrag() {
-    let isDragging = false;
-    let startX, startY, origLeft, origTop;
+  _getMoodEmoji(mood) {
+    if (mood >= 80) return '😄';
+    if (mood >= 60) return '🙂';
+    if (mood >= 40) return '😐';
+    if (mood >= 20) return '😟';
+    return '😢';
+  },
 
-    $(document).on('mousedown', '#ai-pet-drag-handle', (e) => {
-      const win = document.getElementById('ai-pet-float');
-      if (!win) return;
-      isDragging = true;
-      startX   = e.clientX;
-      startY   = e.clientY;
-      origLeft = win.offsetLeft;
-      origTop  = win.offsetTop;
-      win.style.transition = 'none';
+  // 刷新悬浮窗内容
+  refresh() {
+    if (!this._el) return;
+    const slot1 = this._el.querySelector('#ai-pet-slot1');
+    const slot2 = this._el.querySelector('#ai-pet-slot2');
+    if (slot1) slot1.innerHTML = this._buildSlotHTML('slot1');
+    if (slot2) slot2.innerHTML = this._buildSlotHTML('slot2');
+
+    const statsPanel = this._el.querySelector('#ai-pet-stats-panel');
+    if (statsPanel) statsPanel.innerHTML = this._buildStatsHTML();
+
+    const relPanel = this._el.querySelector('#ai-pet-relation-panel');
+    if (relPanel) relPanel.innerHTML = this._buildRelationHTML();
+
+    AiPetLog.info('Floating', '悬浮窗内容已刷新');
+  },
+
+  // 更新最后一条消息信息
+  updateLastMessage(info) {
+    const el = document.getElementById('ai-pet-last-msg-content');
+    if (!el) return;
+    const template = AiPetCore.get('settings.messageTemplate') || DEFAULT_SETTINGS.settings.messageTemplate;
+    const text = template
+      .replace('{petName}',  info.petName  || '桌宠')
+      .replace('{charName}', info.charName || '角色')
+      .replace('{tokens}',   info.tokens   || 0)
+      .replace('{time}',     info.time     || 0)
+      .replace('{floor}',    info.floor    || 0);
+    el.textContent = text;
+  },
+
+  show() {
+    if (!this._el) this.create();
+    this._el.classList.add('ai-pet-floating--visible');
+    AiPetLog.info('Floating', '悬浮窗已显示');
+  },
+
+  hide() {
+    if (!this._el) return;
+    this._el.classList.remove('ai-pet-floating--visible');
+    AiPetLog.info('Floating', '悬浮窗已隐藏');
+  },
+
+  toggle() {
+    if (!this._el) { this.show(); return; }
+    this._el.classList.contains('ai-pet-floating--visible')
+      ? this.hide()
+      : this.show();
+  },
+
+  // PC端拖动
+  _bindDrag() {
+    const handle = this._el.querySelector('#ai-pet-drag-handle');
+    if (!handle) return;
+
+    const isMobile = () => window.innerWidth <= 768;
+
+    handle.addEventListener('mousedown', (e) => {
+      if (isMobile()) return;
+      if (e.target.closest('button')) return; // 不拦截按钮点击
+      this._isDragging = true;
+      const rect = this._el.getBoundingClientRect();
+      this._dragOffsetX = e.clientX - rect.left;
+      this._dragOffsetY = e.clientY - rect.top;
+      this._el.style.transition = 'none';
       e.preventDefault();
     });
 
-    $(document).on('mousemove', (e) => {
-      if (!isDragging) return;
-      const win = document.getElementById('ai-pet-float');
-      if (!win) return;
-      const maxLeft = window.innerWidth  - win.offsetWidth;
-      const maxTop  = window.innerHeight - win.offsetHeight;
-      win.style.left   = Math.max(0, Math.min(maxLeft, origLeft + e.clientX - startX)) + 'px';
-      win.style.top    = Math.max(0, Math.min(maxTop,  origTop  + e.clientY - startY)) + 'px';
-      win.style.right  = 'auto';
-      win.style.bottom = 'auto';
+    document.addEventListener('mousemove', (e) => {
+      if (!this._isDragging) return;
+      let x = e.clientX - this._dragOffsetX;
+      let y = e.clientY - this._dragOffsetY;
+      // 边界限制
+      const maxX = window.innerWidth  - this._el.offsetWidth;
+      const maxY = window.innerHeight - this._el.offsetHeight;
+      x = Math.max(0, Math.min(x, maxX));
+      y = Math.max(0, Math.min(y, maxY));
+      this._el.style.left   = `${x}px`;
+      this._el.style.top    = `${y}px`;
+      this._el.style.right  = 'auto';
+      this._el.style.bottom = 'auto';
     });
 
-    $(document).on('mouseup', () => {
-      if (!isDragging) return;
-      isDragging = false;
-      const win = document.getElementById('ai-pet-float');
-      if (win) win.style.transition = '';
+    document.addEventListener('mouseup', () => {
+      if (this._isDragging) {
+        this._isDragging = false;
+        this._el.style.transition = '';
+      }
+    });
+  },
+
+  _bindClose() {
+    // 事件委托到悬浮窗根元素
+    this._el.addEventListener('click', (e) => {
+      if (e.target.closest('#ai-pet-floating-close')) {
+        this.hide();
+      }
+      if (e.target.closest('#ai-pet-theme-toggle')) {
+        AiPetTheme.toggle();
+      }
+    });
+  },
+
+  _bindTabSwitch() {
+    this._el.addEventListener('click', (e) => {
+      const tab = e.target.closest('.ai-pet-tab');
+      if (!tab) return;
+      const tabName = tab.dataset.tab;
+
+      this._el.querySelectorAll('.ai-pet-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      this._el.querySelectorAll('.ai-pet-tab-panel').forEach(p => {
+        p.classList.remove('active');
+      });
+
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      const panel = this._el.querySelector(`[data-panel="${tabName}"]`);
+      if (panel) panel.classList.add('active');
     });
   },
 };
 
-/* BLOCK END: UI系统 - 悬浮窗与消息注入 */
+/* BLOCK END: 悬浮窗模块 */
 
 /* ============================================================ */
-/* BLOCK START: 配置面板注入                                     */
+/* BLOCK START: 主题系统                                          */
 /* ============================================================ */
 
-const AIPetSettings = {
-
-  init() {
-    this._injectSettingsPanel();
-    this._bindSettingsEvents();
+const AiPetTheme = {
+  apply(theme) {
+    document.documentElement.setAttribute('data-ai-pet-theme', theme);
+    AiPetCore.set('settings.theme', theme);
+    AiPetLog.info('Theme', `主题已切换为: ${theme}`);
   },
 
-  _injectSettingsPanel() {
-    if (document.getElementById('ai-pet-settings-panel')) {
-      AIPetLog.info('Settings', '配置面板已存在，跳过注入');
+  toggle() {
+    const current = AiPetCore.get('settings.theme') || 'pink';
+    const next = current === 'pink' ? 'dark' : 'pink';
+    this.apply(next);
+    // 同步设置面板的选择器
+    const sel = document.getElementById('ai-pet-sp-theme');
+    if (sel) sel.value = next;
+  },
+
+  init() {
+    const theme = AiPetCore.get('settings.theme') || 'pink';
+    this.apply(theme);
+  },
+};
+
+/* BLOCK END: 主题系统 */
+
+/* ============================================================ */
+/* BLOCK START: 消息emoji注入                                     */
+/* ============================================================ */
+
+const AiPetMessageInject = {
+
+  // 注入单条消息的爪子按钮
+  injectOne(messageEl) {
+    if (!messageEl) return;
+    // 防重复注入
+    if (messageEl.querySelector('.ai-pet-msg-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'ai-pet-msg-btn';
+    btn.title = '打开AI桌宠面板';
+    btn.setAttribute('aria-label', '打开AI桌宠面板');
+    btn.innerHTML = '🐾';
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      AiPetFloating.show();
+      AiPetLog.info('MsgInject', '通过消息按钮打开悬浮窗');
+    });
+
+    // 注入到消息右下角
+    // ST消息结构：.mes > .mes_block > .mes_text
+    // 我们找 .mes_block 或直接找消息容器
+    let target = messageEl.querySelector('.mes_block') || messageEl;
+    target.style.position = 'relative';
+    target.appendChild(btn);
+  },
+
+  // 注入所有现有AI消息
+  injectAll() {
+    const messages = document.querySelectorAll('.mes[is_user="false"]');
+    let count = 0;
+    messages.forEach(msg => {
+      this.injectOne(msg);
+      count++;
+    });
+    AiPetLog.info('MsgInject', `已注入 ${count} 条现有消息`);
+  },
+
+  // 注入最新一条AI消息
+  injectLatest() {
+    const messages = document.querySelectorAll('.mes[is_user="false"]');
+    if (messages.length === 0) return;
+    this.injectOne(messages[messages.length - 1]);
+    AiPetLog.info('MsgInject', '已注入最新消息');
+  },
+};
+
+/* BLOCK END: 消息emoji注入 */
+
+/* ============================================================ */
+/* BLOCK START: ST事件监听                                        */
+/* ============================================================ */
+
+const AiPetEvents = {
+  _msgStartTime: null,
+
+  init() {
+    // 确保 ST 的 eventSource 可用
+    if (typeof window.eventSource === 'undefined' || typeof window.event_types === 'undefined') {
+      AiPetLog.error('Events', 'ST eventSource 或 event_types 不可用，事件监听失败');
       return;
     }
 
-    fetch(`${AI_PET_EXT_PATH}/settings.html`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.text();
+    // 消息开始生成时记录时间
+    window.eventSource.on(window.event_types.GENERATION_STARTED, () => {
+      this._msgStartTime = Date.now();
+      AiPetLog.info('Events', '检测到生成开始');
+    });
+
+    // 消息接收完成
+    window.eventSource.on(window.event_types.MESSAGE_RECEIVED, (data) => {
+      this._onMessageReceived(data);
+    });
+
+    // 聊天切换时重新注入
+    window.eventSource.on(window.event_types.CHAT_CHANGED, () => {
+      AiPetLog.info('Events', '聊天已切换，重新注入消息按钮');
+      setTimeout(() => AiPetMessageInject.injectAll(), 500);
+    });
+
+    AiPetLog.success('Events', 'ST事件监听已注册');
+  },
+
+  _onMessageReceived(data) {
+    if (!AiPetCore.get('settings.enabled')) return;
+
+    const elapsed = this._msgStartTime
+      ? ((Date.now() - this._msgStartTime) / 1000).toFixed(1)
+      : '?';
+
+    // 从 ST context 获取信息
+    let tokens = 0;
+    let charName = '角色';
+    let floor = 0;
+
+    try {
+      const ctx = window.getContext ? window.getContext() : null;
+      if (ctx) {
+        charName = ctx.name2 || ctx.characters?.[ctx.characterId]?.name || '角色';
+        floor = ctx.chat?.length ?? 0;
+        // ST 在某些版本会把 token 信息放在 data 或 ctx 里
+        tokens = data?.token_count
+          || ctx.chat?.[ctx.chat.length - 1]?.extra?.token_count
+          || 0;
+      }
+    } catch (e) {
+      AiPetLog.error('Events', '获取ST上下文失败', e);
+    }
+
+    // 更新全局统计
+    const gs = AiPetCore._settings.globalStats;
+    gs.totalMessages += 1;
+    gs.totalTokens   += tokens;
+    gs.sessionTokens += tokens;
+    if (elapsed !== '?') gs.totalResponseTime += parseFloat(elapsed);
+    AiPetCore.save();
+
+    // 更新悬浮窗最后一条消息
+    const pet1 = AiPetCore.get('pets.slot1');
+    const petName = pet1?.name || '桌宠';
+    AiPetFloating.updateLastMessage({ petName, charName, tokens, time: elapsed, floor });
+
+    // 注入爪子按钮到最新消息
+    AiPetMessageInject.injectLatest();
+
+    AiPetLog.info('Events', `消息接收完成 | tokens:${tokens} | 用时:${elapsed}s | 楼层:${floor}`);
+  },
+};
+
+/* BLOCK END: ST事件监听 */
+
+/* ============================================================ */
+/* BLOCK START: 配置面板注入                                      */
+/* ============================================================ */
+
+const AiPetSettings = {
+
+  inject() {
+    // 防重复注入
+    if (document.getElementById('ai-pet-settings-panel')) {
+      AiPetLog.info('Settings', '配置面板已存在，跳过注入');
+      return;
+    }
+
+    AiPetLog.info('Settings', '开始注入配置面板...');
+
+    fetch(`${EXTENSION_PATH}/settings.html`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.text();
       })
       .then(html => {
-        const possibleParents = [
-          document.getElementById('extensions_settings'),
-          document.getElementById('extensions_settings2'),
-          document.querySelector('.extensions_block'),
-        ];
-        const parent = possibleParents.find(p => p)
-          || document.getElementById('top-settings-holder')
-          || document.body;
+        // 寻找ST挂载点（多版本兼容）
+        const parent = this._findParent();
+        if (!parent) {
+          AiPetLog.error('Settings', '找不到ST扩展挂载点');
+          return;
+        }
 
         const container = document.createElement('div');
-        container.id        = 'ai-pet-settings-panel';
+        container.id = 'ai-pet-settings-panel';
         container.className = 'extension_container';
         container.innerHTML = html;
         parent.appendChild(container);
 
         // 动态加载 settings.css
-        if (!document.querySelector(`link[href*="ai-pet-extension/settings.css"]`)) {
+        if (!document.querySelector(`link[href*="${AI_PET_FOLDER}/settings.css"]`)) {
           const link = document.createElement('link');
-          link.rel  = 'stylesheet';
-          link.href = `${AI_PET_EXT_PATH}/settings.css`;
+          link.rel = 'stylesheet';
+          link.href = `${EXTENSION_PATH}/settings.css`;
           document.head.appendChild(link);
+          AiPetLog.info('Settings', 'settings.css 已加载');
         }
 
-        // 同步主题class
-        const wrap = container.querySelector('.ai-pet-sp-wrap');
-        if (wrap && AIPetCore.getSettings()?.theme === 'dark') {
-          wrap.classList.add('theme-dark-sp');
-        }
+        // 同步UI数据（等DOM渲染完）
+        this._syncUI();
+        // 绑定事件（事件委托，只绑一次）
+        this._bindEvents();
 
-        this._syncSettingsUI();
-        AIPetLog.info('Settings', '配置面板注入成功');
+        AiPetLog.success('Settings', '配置面板注入完成');
       })
-      .catch(e => AIPetLog.error('Settings', '配置面板加载失败', e));
+      .catch(err => {
+        AiPetLog.error('Settings', '配置面板加载失败', err);
+        AiPetUI.toast('配置面板加载失败，请检查插件文件', 'error');
+      });
   },
 
-  _syncSettingsUI() {
-    const el = document.getElementById('ai-pet-sp-enabled');
-    if (!el) {
-      setTimeout(() => this._syncSettingsUI(), 500);
-      return;
+  _findParent() {
+    const candidates = [
+      document.getElementById('extensions_settings2'),
+      document.getElementById('extensions_settings'),
+      document.querySelector('.extensions_block'),
+      document.getElementById('top-settings-holder'),
+    ];
+    for (const el of candidates) {
+      if (el) {
+        AiPetLog.info('Settings', `找到挂载点: ${el.id || el.className}`);
+        return el;
+      }
     }
-    const s = AIPetCore.getSettings();
-    $('#ai-pet-sp-enabled').prop('checked', s.enabled);
-    $('#ai-pet-sp-mode').val(s.mode);
-    $('#ai-pet-sp-api-key').val(s.apiKey);
-    $('#ai-pet-sp-api-base').val(s.apiBaseUrl);
-    $('#ai-pet-sp-template').val(s.messageTemplate);
-    $('#ai-pet-sp-log-level').val(s.logLevel);
-    $('#ai-pet-sp-theme').val(s.theme);
-
-    // API区块显示控制
-    this._toggleApiSection(s.mode === 'api');
-
-    // 已缓存的模型列表
-    if (s.availableModels?.length) {
-      this._renderModelOptions(s.availableModels, s.model);
-    }
-
-    AIPetLog.debug('Settings', 'UI数据同步完成');
+    AiPetLog.warn('Settings', '所有候选挂载点均不存在，回退到 document.body');
+    return document.body;
   },
 
-  _bindSettingsEvents() {
+  _syncUI() {
+    const trySync = (attempt = 0) => {
+      const el = document.getElementById('ai-pet-sp-enabled');
+      if (!el) {
+        if (attempt < 10) {
+          setTimeout(() => trySync(attempt + 1), 200);
+        } else {
+          AiPetLog.error('Settings', 'UI同步超时，找不到面板元素');
+        }
+        return;
+      }
+
+      // 同步各字段
+      const s = AiPetCore._settings.settings;
+      el.checked = s.enabled;
+
+      const modeEl = document.getElementById('ai-pet-sp-mode');
+      if (modeEl) modeEl.value = s.mode;
+
+      const keyEl = document.getElementById('ai-pet-sp-apikey');
+      if (keyEl) keyEl.value = s.apiKey || '';
+
+      const urlEl = document.getElementById('ai-pet-sp-baseurl');
+      if (urlEl) urlEl.value = s.apiBaseUrl || 'https://api.openai.com/v1';
+
+      const tplEl = document.getElementById('ai-pet-sp-template');
+      if (tplEl) tplEl.value = s.messageTemplate || DEFAULT_SETTINGS.settings.messageTemplate;
+
+      const logEl = document.getElementById('ai-pet-sp-loglevel');
+      if (logEl) logEl.value = s.logLevel || 'verbose';
+
+      const themeEl = document.getElementById('ai-pet-sp-theme');
+      if (themeEl) themeEl.value = s.theme || 'pink';
+
+      // 折叠状态
+      const body = document.getElementById('ai-pet-sp-body');
+      const arrow = document.getElementById('ai-pet-sp-arrow');
+      if (body && arrow) {
+        if (s.panelCollapsed) {
+          body.classList.add('collapsed');
+          arrow.textContent = '▶';
+        } else {
+          body.classList.remove('collapsed');
+          arrow.textContent = '▼';
+        }
+      }
+
+      AiPetLog.success('Settings', 'UI数据同步完成');
+    };
+
+    trySync();
+  },
+
+  // 所有事件用事件委托绑定到 document，只绑一次
+  _bindEvents() {
+    // 防止重复绑定
+    if (AiPetSettings._eventsBound) return;
+    AiPetSettings._eventsBound = true;
+
+    // 折叠/展开
+    $(document).on('click', '#ai-pet-sp-toggle', function () {
+      const body  = document.getElementById('ai-pet-sp-body');
+      const arrow = document.getElementById('ai-pet-sp-arrow');
+      if (!body) return;
+      const collapsed = body.classList.toggle('collapsed');
+      if (arrow) arrow.textContent = collapsed ? '▶' : '▼';
+      AiPetCore.set('settings.panelCollapsed', collapsed);
+    });
+
+    // 插件总开关
     $(document).on('change', '#ai-pet-sp-enabled', function () {
-      AIPetCore.updateSettings({ enabled: this.checked });
-      AIPetLog.info('Settings', `插件${this.checked ? '已启用' : '已禁用'}`);
+      AiPetCore.set('settings.enabled', this.checked);
+      AiPetUI.toast(this.checked ? '桌宠系统已启用 🐾' : '桌宠系统已关闭', this.checked ? 'success' : 'info');
     });
 
+        // 模式切换
     $(document).on('change', '#ai-pet-sp-mode', function () {
-      AIPetCore.updateSettings({ mode: this.value });
-      AIPetSettings._toggleApiSection(this.value === 'api');
+      AiPetCore.set('settings.mode', this.value);
+      AiPetUI.toast(`已切换为${this.value === 'api' ? 'API' : '免费'}模式`, 'info');
     });
 
-    $(document).on('input', '#ai-pet-sp-api-key',  function () {
-      AIPetCore.updateSettings({ apiKey: this.value.trim() });
+    // API Key
+    $(document).on('change', '#ai-pet-sp-apikey', function () {
+      AiPetCore.set('settings.apiKey', this.value.trim());
     });
 
-    $(document).on('input', '#ai-pet-sp-api-base', function () {
-      AIPetCore.updateSettings({ apiBaseUrl: this.value.trim() });
+    // Base URL
+    $(document).on('change', '#ai-pet-sp-baseurl', function () {
+      AiPetCore.set('settings.apiBaseUrl', this.value.trim());
     });
 
-    $(document).on('click', '#ai-pet-sp-fetch-models', () => this._fetchModels());
-    $(document).on('click', '#ai-pet-sp-test-api',     () => this._testApiConnection());
-
-    $(document).on('change', '#ai-pet-sp-model', function () {
-      AIPetCore.updateSettings({ model: this.value });
-      AIPetLog.info('Settings', `模型已选择: ${this.value}`);
+    // 消息模板
+    $(document).on('change', '#ai-pet-sp-template', function () {
+      AiPetCore.set('settings.messageTemplate', this.value);
+      AiPetUI.toast('消息模板已保存', 'success');
     });
 
-    $(document).on('input', '#ai-pet-sp-template', function () {
-      AIPetCore.updateSettings({ messageTemplate: this.value });
+    // 日志级别
+    $(document).on('change', '#ai-pet-sp-loglevel', function () {
+      AiPetCore.set('settings.logLevel', this.value);
     });
 
-    $(document).on('change', '#ai-pet-sp-log-level', function () {
-      AIPetCore.updateSettings({ logLevel: this.value });
-    });
-
+    // 主题切换
     $(document).on('change', '#ai-pet-sp-theme', function () {
-      AIPetCore.updateSettings({ theme: this.value });
-      // 同步悬浮窗主题
-      const win = document.getElementById('ai-pet-float');
-      if (win) {
-        win.classList.remove('theme-pink', 'theme-dark');
-        win.classList.add(`theme-${this.value}`);
-      }
-      // 同步配置面板主题
-      const wrap = document.querySelector('.ai-pet-sp-wrap');
-      if (wrap) {
-        wrap.classList.toggle('theme-dark-sp', this.value === 'dark');
-      }
+      AiPetTheme.apply(this.value);
+      AiPetUI.toast(this.value === 'pink' ? '已切换为粉白色系 🌸' : '已切换为黑白色系 🌑', 'info');
     });
 
-    $(document).on('click', '#ai-pet-sp-collapse-btn', () => this._toggleCollapse());
-    $(document).on('click', '#ai-pet-sp-export',       () => this._exportData());
-    $(document).on('click', '#ai-pet-sp-clear-all',    () => this._clearAllData());
+    // 获取模型列表
+    $(document).on('click', '#ai-pet-sp-fetch-models', function () {
+      AiPetSettings.fetchModels();
+    });
+
+    // 模型选择
+    $(document).on('change', '#ai-pet-sp-model', function () {
+      AiPetCore.set('settings.model', this.value);
+      AiPetUI.toast(`已选择模型: ${this.value}`, 'success');
+    });
+
+    // API连通性测试
+    $(document).on('click', '#ai-pet-sp-test-api', function () {
+      AiPetSettings.testApi();
+    });
+
+    AiPetLog.success('Settings', '事件委托绑定完成');
   },
 
-  _toggleApiSection(show) {
-    const section = document.getElementById('ai-pet-sp-api-section');
-    if (section) section.style.display = show ? 'block' : 'none';
-  },
+  // 获取可用模型列表
+  async fetchModels() {
+    const btn = document.getElementById('ai-pet-sp-fetch-models');
+    const select = document.getElementById('ai-pet-sp-model');
+    const statusEl = document.getElementById('ai-pet-sp-model-status');
 
-  _toggleCollapse() {
-    const body = document.getElementById('ai-pet-sp-body');
-    const btn  = document.getElementById('ai-pet-sp-collapse-btn');
-    if (!body) return;
-    const isCollapsed = body.classList.toggle('collapsed');
-    if (btn) btn.textContent = isCollapsed ? '▶' : '▼';
-  },
+    const apiKey     = AiPetCore.get('settings.apiKey')     || '';
+    const apiBaseUrl = AiPetCore.get('settings.apiBaseUrl') || 'https://api.openai.com/v1';
 
-  async _fetchModels() {
-    const s      = AIPetCore.getSettings();
-    const apiKey = s.apiKey?.trim();
-    const base   = s.apiBaseUrl?.trim();
-
-    if (!apiKey || !base) {
-      this._setStatus('models', '请先填写 API Key 和 Base URL', 'error');
+    if (!apiKey) {
+      AiPetUI.toast('请先填写 API Key', 'error');
       return;
     }
 
-    const btn = document.getElementById('ai-pet-sp-fetch-models');
-    if (btn) { btn.disabled = true; btn.textContent = '获取中...'; }
-    this._setStatus('models', '正在获取模型列表...', 'loading');
+    AiPetUI.setButtonLoading(btn, true);
+    if (statusEl) {
+      statusEl.textContent = '⏳ 正在获取模型列表...';
+      statusEl.className = 'ai-pet-sp-status ai-pet-sp-status--loading';
+    }
 
     try {
-      const res = await fetch(base.replace(/\/$/, '') + '/models', {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+      const res = await fetch(`${apiBaseUrl}/models`, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type':  'application/json',
+        },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 100)}`);
 
-      const data   = await res.json();
-      const models = (data.data || data.models || [])
-        .map(m => typeof m === 'string' ? m : m.id)
-        .filter(Boolean);
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
+      }
 
-      if (!models.length) throw new Error('未获取到任何模型');
+      const data = await res.json();
+      const models = (data.data || [])
+        .map(m => m.id)
+        .filter(Boolean)
+        .sort();
 
-      AIPetCore.updateSettings({ availableModels: models });
-      this._renderModelOptions(models, s.model);
-      this._setStatus('models', `✅ 获取成功，共 ${models.length} 个模型`, 'success');
-      AIPetLog.info('Settings', `模型列表: ${models.length} 个`);
+      if (models.length === 0) {
+        throw new Error('未获取到任何模型');
+      }
+
+      // 填充 select
+      if (select) {
+        const currentModel = AiPetCore.get('settings.model') || '';
+        select.innerHTML = models.map(m =>
+          `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`
+        ).join('');
+        select.disabled = false;
+      }
+
+      if (statusEl) {
+        statusEl.textContent = `✅ 获取到 ${models.length} 个模型`;
+        statusEl.className = 'ai-pet-sp-status ai-pet-sp-status--success';
+      }
+
+      AiPetUI.toast(`获取到 ${models.length} 个模型`, 'success');
+      AiPetLog.success('Settings', `模型列表获取成功，共 ${models.length} 个`);
 
     } catch (e) {
-      AIPetLog.error('Settings', '获取模型失败', e);
-      this._setStatus('models', `❌ 获取失败: ${e.message}`, 'error');
+      AiPetLog.error('Settings', '获取模型列表失败', e);
+      if (statusEl) {
+        statusEl.textContent = `❌ 获取失败: ${e.message}`;
+        statusEl.className = 'ai-pet-sp-status ai-pet-sp-status--error';
+      }
+      AiPetUI.toast(`获取模型失败: ${e.message}`, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '获取模型'; }
+      AiPetUI.setButtonLoading(btn, false, '获取模型');
     }
   },
 
-  _renderModelOptions(models, currentModel) {
-    const select = document.getElementById('ai-pet-sp-model');
-    if (!select) return;
-    select.innerHTML = '<option value="">-- 请选择模型 --</option>'
-      + models.map(m =>
-          `<option value="${m}"${m === currentModel ? ' selected' : ''}>${m}</option>`
-        ).join('');
-  },
+  // API连通性测试
+  async testApi() {
+    const btn = document.getElementById('ai-pet-sp-test-api');
+    const statusEl = document.getElementById('ai-pet-sp-test-status');
 
-  async _testApiConnection() {
-    const s = AIPetCore.getSettings();
-    if (!s.apiKey?.trim() || !s.apiBaseUrl?.trim() || !s.model) {
-      this._setStatus('test', '请先填写 API Key、Base URL 并选择模型', 'error');
+    const apiKey     = AiPetCore.get('settings.apiKey')     || '';
+    const apiBaseUrl = AiPetCore.get('settings.apiBaseUrl') || 'https://api.openai.com/v1';
+    const model      = AiPetCore.get('settings.model')      || '';
+
+    if (!apiKey) {
+      AiPetUI.toast('请先填写 API Key', 'error');
+      return;
+    }
+    if (!model) {
+      AiPetUI.toast('请先选择模型', 'error');
       return;
     }
 
-    const btn = document.getElementById('ai-pet-sp-test-api');
-    if (btn) { btn.disabled = true; btn.textContent = '测试中...'; }
-    this._setStatus('test', '正在测试连接...', 'loading');
+    AiPetUI.setButtonLoading(btn, true);
+    if (statusEl) {
+      statusEl.textContent = '⏳ 正在测试连接...';
+      statusEl.className = 'ai-pet-sp-status ai-pet-sp-status--loading';
+    }
 
     try {
-      const res = await fetch(s.apiBaseUrl.replace(/\/$/, '') + '/chat/completions', {
-        method:  'POST',
+      const res = await fetch(`${apiBaseUrl}/chat/completions`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${s.apiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type':  'application/json',
         },
         body: JSON.stringify({
-          model:      s.model,
+          model,
           max_tokens: 10,
-          messages:   [{ role: 'user', content: 'Hi' }],
+          messages: [{ role: 'user', content: 'Hi' }],
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 150)}`);
 
-      const data  = await res.json();
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
       const reply = data.choices?.[0]?.message?.content || '(无回复)';
-      this._setStatus('test', `✅ 连接成功！回复: "${reply}"`, 'success');
-      AIPetLog.info('Settings', 'API连通性测试成功');
+
+      if (statusEl) {
+        statusEl.textContent = `✅ 连接成功！回复: ${reply}`;
+        statusEl.className = 'ai-pet-sp-status ai-pet-sp-status--success';
+      }
+      AiPetUI.toast('API连接测试成功 ✅', 'success');
+      AiPetLog.success('Settings', 'API连通性测试成功', reply);
 
     } catch (e) {
-      AIPetLog.error('Settings', 'API测试失败', e);
-      this._setStatus('test', `❌ 连接失败: ${e.message}`, 'error');
+      AiPetLog.error('Settings', 'API连通性测试失败', e);
+      if (statusEl) {
+        statusEl.textContent = `❌ 连接失败: ${e.message}`;
+        statusEl.className = 'ai-pet-sp-status ai-pet-sp-status--error';
+      }
+      AiPetUI.toast(`连接失败: ${e.message}`, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '测试连接'; }
-    }
-  },
-
-  _setStatus(which, msg, type) {
-    const idMap = { models: 'ai-pet-sp-models-status', test: 'ai-pet-sp-test-status' };
-    const el = document.getElementById(idMap[which]);
-    if (!el) return;
-    el.textContent = msg;
-    el.className   = `ai-pet-sp-status ai-pet-sp-status-${type}`;
-  },
-
-  _exportData() {
-    try {
-      const blob = new Blob(
-        [JSON.stringify(AIPetCore.getData(), null, 2)],
-        { type: 'application/json' }
-      );
-      const url = URL.createObjectURL(blob);
-      const a   = Object.assign(document.createElement('a'), {
-        href:     url,
-        download: `ai-pet-data-${new Date().toISOString().slice(0, 10)}.json`,
-      });
-      a.click();
-      URL.revokeObjectURL(url);
-      AIPetLog.info('Settings', '数据已导出');
-    } catch (e) {
-      AIPetLog.error('Settings', '数据导出失败', e);
-    }
-  },
-
-  _clearAllData() {
-    if (!confirm('⚠️ 确定要清空所有桌宠数据吗？此操作不可撤销！')) return;
-    try {
-      extension_settings['ai_pet_extension'] = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-      AIPetCore.load();
-      saveSettingsDebounced();
-      AIPetLog.info('Settings', '所有数据已清空');
-      alert('✅ 数据已清空');
-    } catch (e) {
-      AIPetLog.error('Settings', '清空数据失败', e);
-      alert('❌ 清空失败: ' + e.message);
+      AiPetUI.setButtonLoading(btn, false, '测试连接');
     }
   },
 };
@@ -1154,46 +1081,109 @@ const AIPetSettings = {
 /* BLOCK END: 配置面板注入 */
 
 /* ============================================================ */
-/* BLOCK START: 定时器系统                                       */
+/* BLOCK START: 插件初始化入口                                    */
 /* ============================================================ */
 
-const AIPetTimers = {
-  _decayTimer: null,
+const AiPetInit = {
 
-  init() {
-    this._decayTimer = setInterval(
-      () => AIPetPetManager.naturalDecay(),
-      60 * 60 * 1000
-    );
-    AIPetLog.info('Timers', '属性衰减定时器已启动');
+  async run() {
+    AiPetLog.info('Init', `${AI_PET_NAME} v${AI_PET_VERSION} 开始初始化...`);
+
+    // 1. 加载设置
+    AiPetCore.load();
+
+    // 2. 初始化主题
+    AiPetTheme.init();
+
+    // 3. 加载主样式
+    this._loadMainCSS();
+
+    // 4. 注入配置面板（等ST的扩展设置区域渲染完）
+    this._waitForST(() => {
+      AiPetSettings.inject();
+    });
+
+    // 5. 注册ST事件监听
+    this._waitForEvents(() => {
+      AiPetEvents.init();
+    });
+
+    // 6. 注入现有消息的爪子按钮（等聊天区域渲染完）
+    this._waitForChat(() => {
+      AiPetMessageInject.injectAll();
+    });
+
+    AiPetLog.success('Init', '初始化流程启动完成');
   },
 
-  destroy() {
-    if (this._decayTimer) {
-      clearInterval(this._decayTimer);
-      this._decayTimer = null;
+  _loadMainCSS() {
+    if (document.querySelector(`link[href*="${AI_PET_FOLDER}/style.css"]`)) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `${EXTENSION_PATH}/style.css`;
+    document.head.appendChild(link);
+    AiPetLog.info('Init', 'style.css 已加载');
+  },
+
+  // 等待ST扩展设置区域出现
+  _waitForST(cb, attempt = 0) {
+    const found =
+      document.getElementById('extensions_settings2') ||
+      document.getElementById('extensions_settings') ||
+      document.querySelector('.extensions_block');
+
+    if (found) {
+      cb();
+    } else if (attempt < 20) {
+      setTimeout(() => this._waitForST(cb, attempt + 1), 300);
+    } else {
+      AiPetLog.warn('Init', 'ST扩展挂载点等待超时，强制注入');
+      cb();
+    }
+  },
+
+  // 等待ST事件系统就绪
+  _waitForEvents(cb, attempt = 0) {
+    if (
+      typeof window.eventSource !== 'undefined' &&
+      typeof window.event_types !== 'undefined'
+    ) {
+      cb();
+    } else if (attempt < 20) {
+      setTimeout(() => this._waitForEvents(cb, attempt + 1), 300);
+    } else {
+      AiPetLog.error('Init', 'ST事件系统等待超时，事件监听未注册');
+    }
+  },
+
+  // 等待聊天区域出现
+  _waitForChat(cb, attempt = 0) {
+    const chat = document.getElementById('chat') || document.querySelector('#chat');
+    if (chat) {
+      cb();
+    } else if (attempt < 20) {
+      setTimeout(() => this._waitForChat(cb, attempt + 1), 300);
+    } else {
+      AiPetLog.warn('Init', '聊天区域等待超时，跳过初始注入');
     }
   },
 };
 
-/* BLOCK END: 定时器系统 */
+/* BLOCK END: 插件初始化入口 */
 
 /* ============================================================ */
-/* BLOCK START: 插件入口与初始化                                  */
+/* BLOCK START: ST插件注册                                        */
 /* ============================================================ */
 
-AIPetLog.info('Init', `${AI_PET_NAME} v${AI_PET_VERSION} 开始初始化`);
+// SillyTavern 扩展入口：jQuery ready 后执行
+jQuery(async () => {
+  try {
+    await AiPetInit.run();
+  } catch (e) {
+    console.error(`[${AI_PET_NAME}] 初始化异常:`, e);
+  }
+});
 
-try {
-  // extension_settings 由 import 保证已就绪，直接初始化
-  AIPetCore.load();
-  AIPetUI.init();
-  AIPetEvents.init();
-  AIPetSettings.init();
-  AIPetTimers.init();
-  AIPetLog.info('Init', '✅ 所有模块初始化完成');
-} catch (e) {
-  AIPetLog.error('Init', '初始化过程中发生错误', e);
-}
+/* BLOCK END: ST插件注册 */
 
-/* BLOCK END: 插件入口与初始化 */
+
