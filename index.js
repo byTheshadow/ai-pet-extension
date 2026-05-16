@@ -1,19 +1,32 @@
 /* ============================================================ */
-/* BLOCK START: ST模块导入（必须在文件最顶部）                    */
+/* BLOCK START: ST全局API适配层                                   */
 /* ============================================================ */
 
-import {
-  extension_settings,
-  saveSettingsDebounced,
-  getContext,
-} from '../../../../script.js';
+// ST通过 window.SillyTavern.getContext() 暴露所有API
+// 用getter懒加载，确保每次调用都拿到最新的context引用
+const ST = {
+  get ctx() {
+    return window.SillyTavern.getContext();
+  },
+  get eventSource() {
+    return this.ctx.eventSource;
+  },
+  get event_types() {
+    // ST列表里两个名字都有，优先用event_types，回退eventTypes
+    return this.ctx.event_types ?? this.ctx.eventTypes;
+  },
+  get extensionSettings() {
+    return this.ctx.extensionSettings;
+  },
+  get saveSettingsDebounced() {
+    return this.ctx.saveSettingsDebounced;
+  },
+  getContext() {
+    return this.ctx;
+  },
+};
 
-import {
-  eventSource,
-  event_types,
-} from '../../../../script.js';
-
-/* BLOCK END: ST模块导入 */
+/* BLOCK END: ST全局API适配层 */
 
 /* ============================================================ */
 /* BLOCK START: 模块元信息与常量定义                              */
@@ -101,21 +114,19 @@ const AiPetCore = {
 
   load() {
     try {
-      // ST标准方式：extension_settings 是从script.js导入的对象
-      // 插件数据挂在 extension_settings[插件key] 下
-      if (!extension_settings.ai_pet_extension) {
-        extension_settings.ai_pet_extension = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      if (!ST.extensionSettings.ai_pet_extension) {
+        ST.extensionSettings.ai_pet_extension = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
         AiPetLog.info('Core', '未找到已存储设置，已初始化默认值');
       } else {
         // 深度合并，补全新增字段
-        extension_settings.ai_pet_extension = this._deepMerge(
+        ST.extensionSettings.ai_pet_extension = this._deepMerge(
           JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
-          extension_settings.ai_pet_extension
+          ST.extensionSettings.ai_pet_extension
         );
         AiPetLog.success('Core', '设置加载成功');
       }
       // 直接引用，不做拷贝，保持与ST存储同步
-      this._settings = extension_settings.ai_pet_extension;
+      this._settings = ST.extensionSettings.ai_pet_extension;
     } catch (e) {
       AiPetLog.error('Core', '设置加载失败，使用默认值', e);
       this._settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -124,8 +135,7 @@ const AiPetCore = {
 
   save() {
     try {
-      // extension_settings 已经是引用，直接触发ST保存即可
-      saveSettingsDebounced();
+      ST.saveSettingsDebounced();
       AiPetLog.info('Core', '设置已保存');
     } catch (e) {
       AiPetLog.error('Core', '设置保存失败', e);
@@ -600,17 +610,16 @@ const AiPetEvents = {
   _msgStartTime: null,
 
   init() {
-    // 使用顶部import进来的 eventSource 和 event_types，不走window
-    eventSource.on(event_types.GENERATION_STARTED, () => {
+    ST.eventSource.on(ST.event_types.GENERATION_STARTED, () => {
       this._msgStartTime = Date.now();
       AiPetLog.info('Events', '检测到生成开始');
     });
 
-    eventSource.on(event_types.MESSAGE_RECEIVED, (data) => {
+    ST.eventSource.on(ST.event_types.MESSAGE_RECEIVED, (data) => {
       this._onMessageReceived(data);
     });
 
-    eventSource.on(event_types.CHAT_CHANGED, () => {
+    ST.eventSource.on(ST.event_types.CHAT_CHANGED, () => {
       AiPetLog.info('Events', '聊天已切换，重新注入消息按钮');
       setTimeout(() => AiPetMessageInject.injectAll(), 500);
     });
@@ -626,7 +635,7 @@ const AiPetEvents = {
 
     let tokens = 0, charName = '角色', floor = 0;
     try {
-      const ctx = getContext();
+      const ctx = ST.getContext();
       if (ctx) {
         charName = ctx.name2
           || ctx.characters?.[ctx.characterId]?.name
@@ -680,7 +689,7 @@ const AiPetSettings = {
         return res.text();
       })
       .then(html => {
-                const parent = this._findParent();
+        const parent = this._findParent();
         if (!parent) {
           AiPetLog.error('Settings', '找不到ST扩展挂载点');
           return;
@@ -1012,9 +1021,9 @@ const AiPetSettings = {
   clearData() {
     if (!confirm('确定要清空所有桌宠数据吗？此操作不可撤销！')) return;
     try {
-      extension_settings.ai_pet_extension = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-      AiPetCore._settings = extension_settings.ai_pet_extension;
-      saveSettingsDebounced();
+      ST.extensionSettings.ai_pet_extension = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      AiPetCore._settings = ST.extensionSettings.ai_pet_extension;
+      ST.saveSettingsDebounced();
       AiPetFloating.refresh();
       AiPetSettings._syncUI();
       AiPetUI.toast('数据已清空 🗑️', 'info');
@@ -1037,7 +1046,7 @@ const AiPetInit = {
   async run() {
     AiPetLog.info('Init', `${AI_PET_NAME} v${AI_PET_VERSION} 开始初始化...`);
 
-    // 1. 加载设置（extension_settings 此时已由ST准备好）
+    // 1. 加载设置
     AiPetCore.load();
 
     // 2. 初始化主题
@@ -1052,7 +1061,6 @@ const AiPetInit = {
     });
 
     // 5. 注册ST事件监听
-    // import进来的 eventSource 在jQuery ready时已经可用，直接初始化
     AiPetEvents.init();
 
     // 6. 注入现有消息的爪子按钮
